@@ -1,10 +1,10 @@
 [package]
 name = "keyspace"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["Victor Farazdagi <farazdagi@gmail.com>"]
-description = "Keyspace partitioning, replication and rebalancing for distributed systems"
+description = "Dynamic key space partitioning and re-balancing for distributed systems"
 homepage = "https://github.com/farazdagi/keyspace"
 repository = "https://github.com/farazdagi/keyspace"
 documentation = "https://docs.rs/keyspace"
