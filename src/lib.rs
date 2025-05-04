@@ -24,10 +24,10 @@ pub trait Keyspace<N: Node> {
     ///
     /// Depending on the implementation, the node will claim one or more
     /// intervals of the key space.
-    fn add(&self, node: N);
+    fn add(&mut self, node: N);
 
     /// Remove a node from the key space.
-    fn remove(&self, node: &N);
+    fn remove(&mut self, node: &N);
 
     /// Returns the node responsible for the given key.
     ///

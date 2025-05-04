@@ -16,5 +16,5 @@ Implement a key space partitioning and re-balancing algorithm that is:
   movement.
 - [ ] Robust: supports replication out of the box.
 
-The idea is to allow system to grow to thousands of nodes, and to process millions of keys
-per second efficiently.
+The idea is to allow system to grow to thousands of nodes, and to process millions of keys per
+second efficiently.
