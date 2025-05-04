@@ -6,6 +6,8 @@ use std::hash::Hash;
 /// Keys which fall into such an interval are routed to the node.
 pub trait Node: Hash {}
 
+impl<T> Node for T where T: Hash {}
+
 /// Key space manager.
 ///
 /// Allows to partition the key space, obtain the node responsible for a key,
