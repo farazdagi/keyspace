@@ -61,7 +61,7 @@ pub trait Keyspace<N: Node> {
     /// Remove a node from the key space.
     ///
     /// Returns the node if it was removed, `None` otherwise.
-    fn remove(&mut self, node: &N) -> Option<N>;
+    fn remove(&mut self, node: &N) -> Option<Self::NodeRef<'_>>;
 
     /// Returns the node responsible for the given key.
     ///
@@ -78,7 +78,7 @@ pub trait Keyspace<N: Node> {
     /// The first node is the primary node responsible for the key. It is
     /// guaranteed that the first node is the same as the one returned by
     /// [`node()`](Self::node).
-    fn replicas<K: Hash>(&self, key: &K, k: usize) -> Option<Vec<&N>>;
+    fn replicas<K: Hash>(&self, key: &K, k: usize) -> Option<Vec<Self::NodeRef<'_>>>;
 
     /// Returns key space position to which a given key will be assigned.
     fn position<K: Hash>(&self, key: &K) -> Self::Position;

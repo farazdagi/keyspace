@@ -1,6 +1,6 @@
 [package]
 name = "keyspace"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 license = "MIT"
 authors = ["Victor Farazdagi <farazdagi@gmail.com>"]
