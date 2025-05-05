@@ -4,9 +4,9 @@ use std::hash::Hash;
 ///
 /// Node controls one or more interval of the key space.
 /// Keys which fall into such an interval are routed to the node.
-pub trait Node: Hash {}
+pub trait Node: Hash + Send + 'static {}
 
-impl<T> Node for T where T: Hash {}
+impl<T> Node for T where T: Hash + Send + 'static {}
 
 /// Reference to a node.
 ///
