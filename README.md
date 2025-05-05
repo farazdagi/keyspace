@@ -15,6 +15,7 @@ Implement a key space partitioning and re-balancing algorithm that is:
 - [ ] Adaptive: supports node addition and removal, with close to theoretically minimal data
   movement.
 - [ ] Robust: supports replication out of the box.
+- [ ] Heterogeneous: supports heterogeneous nodes (e.g. different storage capacities).
 
 The idea is to allow system to grow to thousands of nodes, and to process millions of keys per
 second efficiently.

@@ -8,6 +8,15 @@ pub trait Node: Hash {}
 
 impl<T> Node for T where T: Hash {}
 
+/// Reference to a node.
+///
+/// Internally nodes might be stored in maps or other data structures.
+/// References to elements in such data structures are not valid if we cannot
+/// guarantee that data structure's lifetime is longer than the reference's
+/// lifetime. By wrapping the reference in a trait, we can bind the lifetime of
+/// node reference and the underlying data structure.
+pub trait NodeRef<'a, T: Node> {}
+
 /// Key space manager.
 ///
 /// Provides a way to manage the key space and the nodes that control it.
@@ -27,14 +36,32 @@ pub trait Keyspace<N: Node> {
     /// Position of a key in the key space.
     type Position;
 
+    /// Reference to a node.
+    type NodeRef<'a>: NodeRef<'a, N>
+    where
+        Self: 'a;
+
     /// Add a node to the key space.
     ///
     /// Depending on the implementation, the node will claim one or more
     /// intervals of the key space.
-    fn add(&mut self, node: N);
+    fn add(&mut self, node: N) {
+        self.add_with_capacity(node, 0)
+    }
+
+    /// Add a node and its capacity to the key space.
+    ///
+    /// Capacity is an arbitrary number that is used to determine what portion
+    /// of the key space the node will control. Capacities of all nodes are
+    /// summed up to determine the total capacity of the key space. The relative
+    /// capacity of the node is then ratio of the node's capacity to the total
+    /// capacity of the key space.
+    fn add_with_capacity(&mut self, node: N, capacity: usize);
 
     /// Remove a node from the key space.
-    fn remove(&mut self, node: &N);
+    ///
+    /// Returns the node if it was removed, `None` otherwise.
+    fn remove(&mut self, node: &N) -> Option<N>;
 
     /// Returns the node responsible for the given key.
     ///
@@ -44,7 +71,7 @@ pub trait Keyspace<N: Node> {
     /// [`replicas()`](Self::replicas).
     ///
     /// If the key space is empty (no nodes has been added), `None` is returned.
-    fn node<K: Hash>(&self, key: &K) -> Option<&N>;
+    fn node<K: Hash>(&self, key: &K) -> Option<Self::NodeRef<'_>>;
 
     /// Returns `k` nodes responsible for the given key.
     ///
