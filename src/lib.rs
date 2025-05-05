@@ -10,11 +10,13 @@ impl<T> Node for T where T: Hash {}
 
 /// Key space manager.
 ///
-/// Allows to partition the key space, obtain the node responsible for a key,
-/// remove a node and re-balance the key space, so that data is evenly
-/// distributed across the nodes.
+/// Provides a way to manage the key space and the nodes that control it.
+/// Allows to add and remove nodes, and to find the node responsible for a
+/// given key (or replicas, when key is stored redundantly).
 ///
-/// The implementation is assumed to be thread-safe.
+/// On node addition or removal, the key space is re-balanced: data needs to be
+/// moved around, therefore the key space manager exposes the intervals
+/// controlled by a node.
 pub trait Keyspace<N: Node> {
     /// A half-open interval of the key space.
     ///
