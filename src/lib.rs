@@ -45,7 +45,7 @@ pub trait Keyspace<N: Node> {
     ///
     /// Depending on the implementation, the node will claim one or more
     /// intervals of the key space.
-    fn add(&mut self, node: N) {
+    fn add(&self, node: N) {
         self.add_with_capacity(node, 0)
     }
 
@@ -56,12 +56,12 @@ pub trait Keyspace<N: Node> {
     /// summed up to determine the total capacity of the key space. The relative
     /// capacity of the node is then ratio of the node's capacity to the total
     /// capacity of the key space.
-    fn add_with_capacity(&mut self, node: N, capacity: usize);
+    fn add_with_capacity(&self, node: N, capacity: usize);
 
     /// Remove a node from the key space.
     ///
     /// Returns the node if it was removed, `None` otherwise.
-    fn remove(&mut self, node: &N) -> Option<Self::NodeRef<'_>>;
+    fn remove(&self, node: &N) -> Option<Self::NodeRef<'_>>;
 
     /// Returns the node responsible for the given key.
     ///
