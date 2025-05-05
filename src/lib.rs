@@ -24,6 +24,9 @@ pub trait Keyspace<N: Node> {
     /// `[start..end)`.
     type Interval;
 
+    /// Position of a key in the key space.
+    type Position;
+
     /// Add a node to the key space.
     ///
     /// Depending on the implementation, the node will claim one or more
@@ -49,6 +52,9 @@ pub trait Keyspace<N: Node> {
     /// guaranteed that the first node is the same as the one returned by
     /// [`node()`](Self::node).
     fn replicas<K: Hash>(&self, key: &K, k: usize) -> Option<Vec<&N>>;
+
+    /// Returns key space position to which a given key will be assigned.
+    fn position<K: Hash>(&self, key: &K) -> Self::Position;
 
     /// Returns intervals of the key space controlled by the given node.
     ///
