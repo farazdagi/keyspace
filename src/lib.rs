@@ -78,7 +78,7 @@ pub trait Keyspace<N: Node> {
     /// The first node is the primary node responsible for the key. It is
     /// guaranteed that the first node is the same as the one returned by
     /// [`node()`](Self::node).
-    fn replicas<K: Hash>(&self, key: &K, k: usize) -> impl Iterator<Item = Self::NodeRef<'_>>;
+    fn replicas<K: Hash>(&self, key: &K, k: usize) -> Vec<Self::NodeRef<'_>>;
 
     /// Returns key space position to which a given key will be assigned.
     fn position<K: Hash>(&self, key: &K) -> Self::Position;
