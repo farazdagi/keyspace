@@ -61,7 +61,7 @@ pub trait Keyspace<N: Node> {
     /// Remove a node from the key space.
     ///
     /// Returns the node if it was removed, `None` otherwise.
-    fn remove(&self, node: &N) -> Option<N>;
+    fn remove(&self, node: &N);
 
     /// Returns the node responsible for the given key.
     ///
