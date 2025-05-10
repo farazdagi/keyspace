@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{hash::Hash, result::Result};
 
 /// Node that serves as a destination for data.
 ///
@@ -41,11 +41,14 @@ pub trait Keyspace<N: Node> {
     where
         Self: 'a;
 
+    /// Error type for the key space manager.
+    type Error;
+
     /// Add a node to the key space.
     ///
     /// Depending on the implementation, the node will claim one or more
     /// intervals of the key space.
-    fn add(&self, node: N) {
+    fn add(&self, node: N) -> Result<(), Self::Error> {
         self.add_with_capacity(node, 0)
     }
 
@@ -56,12 +59,12 @@ pub trait Keyspace<N: Node> {
     /// summed up to determine the total capacity of the key space. The relative
     /// capacity of the node is then ratio of the node's capacity to the total
     /// capacity of the key space.
-    fn add_with_capacity(&self, node: N, capacity: usize);
+    fn add_with_capacity(&self, node: N, capacity: usize) -> Result<(), Self::Error>;
 
     /// Remove a node from the key space.
     ///
     /// Returns the node if it was removed, `None` otherwise.
-    fn remove(&self, node: &N);
+    fn remove(&self, node: &N) -> Result<(), Self::Error>;
 
     /// Returns the node responsible for the given key.
     ///
