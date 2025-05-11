@@ -4,7 +4,7 @@ version = "0.1.13"
 edition = "2024"
 license = "MIT"
 authors = ["Victor Farazdagi <farazdagi@gmail.com>"]
-description = "Dynamic key space partitioning and re-balancing for distributed systems"
+description = "Dynamic keyspace partitioning and re-balancing for distributed systems"
 homepage = "https://github.com/farazdagi/keyspace"
 repository = "https://github.com/farazdagi/keyspace"
 documentation = "https://docs.rs/keyspace"
@@ -14,3 +14,4 @@ categories = ["algorithms", "data-structures"]
 
 
 [dependencies]
+thiserror = "2.0"
