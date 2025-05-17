@@ -1,26 +1,34 @@
-pub mod interval;
-pub mod node;
+mod interval;
+mod node;
 
-#[cfg(test)]
-mod node_test;
-
-use std::{hash::Hash, ops::Range, result::Result};
+use std::{hash::Hash, result::Result};
 
 pub use {
     interval::Interval,
-    node::{Node,Nodes, NodeIdx, NodeRef},
+    node::{Node, NodeIdx, NodeRef},
 };
 
 /// Keyspace.
 ///
-/// Provides a way to manage the keyspace and the nodes that control it.
-/// Allows to add and remove nodes, and to find the node responsible for a
-/// given key (or replicas, when key is stored redundantly).
+/// Manages information about nodes and their intervals in the keyspace.
+/// Each node controls one or more intervals of the keyspace, and whenever a key
+/// needs to be stored or retrieved, the keyspace manager will provide all the
+/// replica nodes that are responsible for the key.
 ///
-/// On node addition or removal, the keyspace is re-balanced: data needs to be
-/// moved around, using migration. The interface provides a way to get the
-/// list of pending ranges to be moved.
-pub trait Keyspace<N: Node, const REPLICATION_FACTOR: usize> {
+/// Whenever a node is added or removed, the keyspace manager will re-balance
+/// the internal structure in a way that minimizes the amount of data that needs
+/// to be moved around.
+///
+/// On each node addition or removal, the keyspace manager will provide a
+/// migration plan, which is a list of keyspace intervals that need to be moved
+/// from one node to another.
+///
+/// Supports replication out of the box, so that each key is stored redundantly
+/// on multiple of nodes, for fault tolerance.
+pub trait Keyspace<N: Node, const REPLICATION_FACTOR: usize>: Sized {
+    /// Error type for the keyspace manager.
+    type Error;
+
     /// Position of a key in the keyspace.
     type Position;
 
@@ -29,45 +37,41 @@ pub trait Keyspace<N: Node, const REPLICATION_FACTOR: usize> {
     where
         Self: 'a;
 
-    /// Error type for the keyspace manager.
-    type Error;
+    /// Migration plan has all the information needed to migrate data from one
+    /// to another when a node is added or removed.
+    type MigrationPlan;
+
+    /// How to choose the redundant nodes.
+    type ReplicationStrategy;
+
+    /// Returns keyspace with the given replication strategy.
+    fn with_replication_strategy(
+        self,
+        replication_strategy: Self::ReplicationStrategy,
+    ) -> Result<Self, Self::Error>;
 
     /// Add a node to the keyspace.
     ///
     /// The node will claim one or more intervals of the keyspace.
-    fn add(&self, node: N) -> Result<(), Self::Error>;
+    fn add_node(&self, node: N) -> Result<Self::MigrationPlan, Self::Error>;
 
     /// Remove a node from the keyspace.
-    fn remove(&self, node: &N) -> Result<(), Self::Error>;
+    fn remove_node(&self, node: &N) -> Result<Self::MigrationPlan, Self::Error>;
 
-    /// Returns the node responsible for the given key.
-    ///
-    /// Due to replication, a key may land on several nodes, this method returns
-    /// the primary node responsible for the key.
-    /// Whenever more than one node is needed, use
-    /// [`replicas()`](Self::replicas).
-    ///
-    /// If the keyspace is empty (no nodes has been added), `None` is returned.
-    fn node<K: Hash>(&self, key: &K) -> Option<Self::NodeRef<'_>>;
+    /// Replace all nodes in the keyspace with a new batch of nodes.
+    fn set_nodes(
+        &self,
+        nodes: impl IntoIterator<Item = N>,
+    ) -> Result<Self::MigrationPlan, Self::Error>;
 
     /// Returns `k` nodes responsible for the given key.
     ///
-    /// The first node is the primary node responsible for the key. It is
-    /// guaranteed that the first node is the same as the one returned by
-    /// [`node()`](Self::node).
-    fn replicas<K: Hash>(&self, key: &K, k: usize) -> Vec<Self::NodeRef<'_>>;
+    /// The first node is assumed to be the primary node.
+    fn replicas<K: Hash>(&self, key: &K, k: usize) -> impl Iterator<Item=Self::NodeRef<'_>>;
 
-    /// Returns keyspace position to which a given key will be assigned.
-    fn position<K: Hash>(&self, key: &K) -> Self::Position;
-
-    /// Returns `[start..end)` intervals of the keyspace controlled by the given
-    /// node.
+    /// Keyspace as intervals controlled by the nodes.
     ///
-    /// This method is necessary to re-balance the keyspace. When a node is
-    /// added or removed, data needs to be moved from one node to another.
-    /// In order to do so, the current intervals controlled by the node need
-    /// to be known.
-    ///
-    /// Whenever the node is not part of the keyspace, `None` is returned.
-    fn intervals(&self, node: &N) -> Option<Vec<Interval>>;
+    /// Each interval is a half-open `[start_key..end_key)` range of controlled
+    /// keys, with one or more replicas assigned.
+    fn iter(&self, node: &N) -> impl Iterator<Item = Interval>;
 }
