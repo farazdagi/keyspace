@@ -1,8 +1,8 @@
 #[derive(Debug, PartialEq, thiserror::Error)]
 pub enum KeyspaceError {
     /// Not enough nodes for replication factor
-    #[error("Not enough nodes ({0}) for a given replication factor: {1}")]
-    NotEnoughNodes(usize, usize),
+    #[error("Not enough nodes for a given replication factor: {0}")]
+    NotEnoughNodes(usize),
 
     /// Incomplete replica set
     #[error("Incomplete replica set")]

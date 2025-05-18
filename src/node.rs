@@ -135,6 +135,11 @@ impl<N: Node> Nodes<N> {
         self.nodes.get(&idx)
     }
 
+    /// Number of nodes in the collection.
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
     /// Iterator over the nodes in the collection.
     pub fn iter(&self) -> impl Iterator<Item = (NodeIdx, &N)> {
         self.nodes.iter().map(|(idx, node)| (*idx, node))

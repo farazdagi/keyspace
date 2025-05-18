@@ -34,7 +34,7 @@ pub trait Keyspace<N: Node, const REPLICATION_FACTOR: usize>: Sized {
     type MigrationPlan;
 
     /// How to choose the redundant nodes.
-    type ReplicationStrategy: ReplicationStrategy<N>;
+    type ReplicationStrategy: ReplicationStrategy;
 
     /// Returns keyspace with the given replication strategy.
     fn with_replication_strategy(
