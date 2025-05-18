@@ -18,7 +18,7 @@ pub type NodeIdx = u16;
 /// replicas).
 #[auto_impl(&)]
 pub trait Node: Hash + Send + Sync + 'static {
-    type NodeId: fmt::Debug + Hash + Eq;
+    type NodeId: fmt::Debug + Default + Hash + Eq;
 
     /// Returns the node id.
     fn id(&self) -> &Self::NodeId;
@@ -138,6 +138,22 @@ impl<N: Node> Nodes<N> {
     /// Iterator over the nodes in the collection.
     pub fn iter(&self) -> impl Iterator<Item = (NodeIdx, &N)> {
         self.nodes.iter().map(|(idx, node)| (*idx, node))
+    }
+
+    /// Iterator over the indices of the nodes in the collection.
+    ///
+    /// Only valid indexes are returned, i.e. indexes that are not in the free
+    /// list.
+    pub fn indexes(&self) -> impl Iterator<Item = NodeIdx> {
+        self.nodes.keys().copied()
+    }
+
+    /// Given iterator of node indexes, returns an iterator over the nodes.
+    pub fn filter_nodes<'a>(
+        &'a self,
+        indexes: impl Iterator<Item = NodeIdx> + 'a,
+    ) -> impl Iterator<Item = &'a N> {
+        indexes.filter_map(move |idx| self.nodes.get(&idx))
     }
 }
 
