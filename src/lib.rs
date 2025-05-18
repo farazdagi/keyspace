@@ -6,13 +6,11 @@ mod node;
 mod replication;
 mod sharding;
 
-use std::{hash::Hash, result::Result};
-
 pub use {
     error::*,
     interval::{Interval, KeyspaceInterval},
     node::{Node, NodeRef},
-    replication::ReplicationStrategy,
+    replication::{DefaultReplicationStrategy, ReplicationStrategy},
 };
 
 pub struct Keyspace<N: Node, const REPLICATION_FACTOR: usize> {
