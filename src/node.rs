@@ -1,11 +1,11 @@
 use {
+    crate::{KeyspaceError, KeyspaceResult},
     auto_impl::auto_impl,
     std::{
         collections::{HashMap, VecDeque},
         fmt,
         hash::Hash,
-        ops::{Index, Range},
-        result::Result,
+        ops::Index,
     },
 };
 
@@ -17,7 +17,7 @@ pub type NodeIdx = u16;
 /// Keys which fall into such an interval are routed to the node (and its
 /// replicas).
 #[auto_impl(&)]
-pub trait Node: Hash + Send + Sync + 'static {
+pub trait Node: Hash + 'static {
     type NodeId: fmt::Debug + Default + Hash + Eq;
 
     /// Returns the node id.
@@ -34,7 +34,9 @@ pub trait Node: Hash + Send + Sync + 'static {
     /// Capacities of all nodes are summed up to determine the total capacity of
     /// the keyspace. The relative capacity of the node is then ratio of the
     /// node's capacity to the total capacity of the keyspace.
-    fn capacity(&self) -> usize;
+    fn capacity(&self) -> usize {
+        1
+    }
 }
 
 /// Reference to a node.
@@ -45,6 +47,8 @@ pub trait Node: Hash + Send + Sync + 'static {
 /// lifetime. By wrapping the reference in a trait, we can bind the lifetime of
 /// node reference and the underlying data structure.
 pub trait NodeRef<'a, T: Node> {}
+
+impl<'a, T: Node> NodeRef<'a, T> for &'a T {}
 
 /// Nodes collection.
 ///
@@ -90,31 +94,17 @@ impl<N: Node> Nodes<N> {
         Self::default()
     }
 
-    /// Returns index of the node with given id.
-    ///
-    /// Normally, all operations on nodes are done using the index, but in some
-    /// cases node is is all we have, so we need to find the index of the node
-    /// with given id. This will traverse the whole collection, so it is not
-    /// recommended to overuse.
-    pub fn idx(&self, id: &N::NodeId) -> Option<NodeIdx> {
-        self.nodes.iter().find_map(
-            |(idx, node)| {
-                if node.id() == id { Some(*idx) } else { None }
-            },
-        )
-    }
-
     /// Adds a node to the collection.
     ///
     /// Returns the index of the node in the collection.
-    pub fn insert(&mut self, node: N) -> Result<NodeIdx, NodesError> {
+    pub fn insert(&mut self, node: N) -> KeyspaceResult<NodeIdx> {
         let idx = if let Some(idx) = self.free_list.pop_front() {
             idx
         } else {
             self.next_idx = self
                 .next_idx
                 .checked_add(1)
-                .ok_or(NodesError::OutOfIndices)?;
+                .ok_or(KeyspaceError::OutOfIndexes)?;
             self.next_idx - 1
         };
 
@@ -162,13 +152,6 @@ impl<N: Node> Nodes<N> {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum NodesError {
-    /// No more indices available.
-    #[error("Out of indices")]
-    OutOfIndices,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,7 +194,6 @@ mod tests {
 
         // Check that the nodes are in the collection
         for (idx, node) in nodes.iter() {
-            nodes.idx(&node.id).unwrap();
             check_node(&nodes[idx], node.id.clone(), node.capacity);
         }
 
