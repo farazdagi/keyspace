@@ -14,7 +14,13 @@ pub use {
     node::{Node, NodeRef},
     replication::{DefaultReplicationStrategy, ReplicationStrategy},
 };
-use {node::Nodes, sharding::Shards, std::hash::Hash};
+use {
+    node::Nodes,
+    sharding::{ShardIdx, Shards},
+};
+
+/// Position of a key in the key space.
+pub type KeyPosition = u64;
 
 /// Keyspace.
 ///
@@ -33,25 +39,25 @@ use {node::Nodes, sharding::Shards, std::hash::Hash};
 ///
 /// Supports replication out of the box, so that each key is stored
 /// redundantly on multiple of nodes, for fault tolerance.
-pub struct Keyspace<N, R = DefaultReplicationStrategy, const REPLICATION_FACTOR: usize = 3>
+pub struct Keyspace<N, R = DefaultReplicationStrategy, const RF: usize = 3>
 where
     N: Node,
     R: ReplicationStrategy,
 {
     nodes: Nodes<N>,
-    shards: Shards<REPLICATION_FACTOR>,
+    shards: Shards<RF>,
     replication_strategy: R,
     version: u64,
 }
 
-impl<N, R, const REPLICATION_FACTOR: usize> Keyspace<N, R, REPLICATION_FACTOR>
+impl<N, R, const RF: usize> Keyspace<N, R, RF>
 where
     N: Node,
     R: ReplicationStrategy,
 {
     /// Create new key space.
     ///
-    /// Make sure that at least `REPLICATION_FACTOR` nodes are added to the
+    /// Make sure that at least `RF` nodes are added to the
     /// keyspace, otherwise the keyspace will not be able to function properly.
     fn new<I: IntoIterator<Item = N>>(
         init_nodes: I,
@@ -63,7 +69,6 @@ where
         }
 
         let shards = Shards::new(&nodes, replication_strategy.clone())?;
-
         Ok(Self {
             nodes,
             shards,
@@ -107,12 +112,17 @@ where
         todo!()
     }
 
-    /// Returns `REPLICATION_FACTOR` number of nodes responsible for the given
-    /// key.
+    /// Returns replication factor (`RF`) number of nodes responsible for the
+    /// given key position. Key is, normally, hashed to determine the position
+    /// in the key space.
     ///
     /// The first node is assumed to be the primary node.
-    pub fn replicas<'a, K: Hash>(&self, key: &K) -> impl Iterator<Item = &'a N> + 'a {
-        std::iter::once(todo!())
+    pub fn replicas(&self, key_position: KeyPosition) -> impl Iterator<Item = &N> {
+        let shard_idx = ShardIdx::from_position(key_position);
+        let replica_set = self.shards.replica_set(shard_idx);
+        replica_set
+            .iter()
+            .filter_map(|node_idx| self.nodes.get(*node_idx))
     }
 
     /// Keyspace as intervals controlled by the nodes.

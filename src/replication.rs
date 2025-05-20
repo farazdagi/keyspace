@@ -42,23 +42,30 @@ impl DefaultReplicationStrategy {
 
 /// Set of nodes that are used to store a replica of the data.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ReplicaSet<N, const REPLICATION_FACTOR: usize>([N; REPLICATION_FACTOR]);
+pub(crate) struct ReplicaSet<N, const RF: usize>([N; RF]);
 
-impl<T, const REPLICATION_FACTOR: usize> ReplicaSet<T, REPLICATION_FACTOR>
+impl<T, const RF: usize> ReplicaSet<T, RF>
 where
     T: Default + Copy,
 {
     pub fn try_from_iter<I: IntoIterator<Item = T>>(iter: I) -> KeyspaceResult<Self> {
-        let mut items = [T::default(); REPLICATION_FACTOR];
+        let mut items = [T::default(); RF];
         let mut count = 0;
-        for (i, item) in iter.into_iter().take(REPLICATION_FACTOR).enumerate() {
+        for (i, item) in iter.into_iter().take(RF).enumerate() {
             items[i] = item;
             count += 1;
         }
-        if count < REPLICATION_FACTOR {
+        if count < RF {
             return Err(KeyspaceError::IncompleteReplicaSet);
         }
 
         Ok(ReplicaSet(items))
+    }
+}
+
+impl<T, const RF: usize> ReplicaSet<T, RF> {
+    /// Iterator over the nodes in the replica set.
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.iter()
     }
 }

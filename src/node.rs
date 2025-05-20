@@ -9,7 +9,7 @@ use {
     },
 };
 
-pub type NodeIdx = u16;
+pub(crate) type NodeIdx = u16;
 
 /// Node that stores data.
 ///
@@ -18,7 +18,7 @@ pub type NodeIdx = u16;
 /// replicas).
 #[auto_impl(&)]
 pub trait Node: Hash + 'static {
-    type NodeId: fmt::Debug + Default + Hash + Eq;
+    type NodeId: fmt::Debug + Hash + Eq;
 
     /// Returns the node id.
     fn id(&self) -> &Self::NodeId;
@@ -38,6 +38,22 @@ pub trait Node: Hash + 'static {
         1
     }
 }
+
+macro_rules! impl_node {
+    ($($t:ty),*) => {
+        $(
+            impl Node for $t {
+                type NodeId = Self;
+
+                fn id(&self) -> &Self::NodeId {
+                    self
+                }
+            }
+        )*
+    };
+}
+
+impl_node!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, String);
 
 /// Reference to a node.
 ///

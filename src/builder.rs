@@ -26,7 +26,7 @@ impl<N: Node> KeyspaceBuilder<N> {
 
     /// Build the keyspace.
     pub fn build(self) -> KeyspaceResult<Keyspace<N, DefaultReplicationStrategy, 3>> {
-        Keyspace::create(self.0, DefaultReplicationStrategy::new())
+        Keyspace::new(self.0, DefaultReplicationStrategy::new())
     }
 }
 
@@ -48,7 +48,7 @@ where
     /// Build the keyspace with the given replication strategy and default
     /// replication factor.
     pub fn build(self) -> KeyspaceResult<Keyspace<N, R, RF>> {
-        Keyspace::create(self.0, self.1)
+        Keyspace::new(self.0, self.1)
     }
 }
 
@@ -70,6 +70,6 @@ where
     /// Build the keyspace with the given replication factor and default
     /// replication strategy.
     pub fn build(self) -> KeyspaceResult<Keyspace<N, DefaultReplicationStrategy, RF>> {
-        Keyspace::create(self.0, DefaultReplicationStrategy::new())
+        Keyspace::new(self.0, DefaultReplicationStrategy::new())
     }
 }
