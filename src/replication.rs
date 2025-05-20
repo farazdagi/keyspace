@@ -27,6 +27,19 @@ impl ReplicationStrategy for DefaultReplicationStrategy {
     }
 }
 
+impl Default for DefaultReplicationStrategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DefaultReplicationStrategy {
+    /// Creates a new instance of the default replication strategy.
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 /// Set of nodes that are used to store a replica of the data.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ReplicaSet<N, const REPLICATION_FACTOR: usize>([N; REPLICATION_FACTOR]);

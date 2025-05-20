@@ -15,5 +15,5 @@ categories = ["algorithms", "data-structures"]
 
 [dependencies]
 thiserror = "2.0"
-hrw-hash = "0.2"
+hrw-hash = "1"
 auto_impl = "1.3"

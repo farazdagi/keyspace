@@ -15,6 +15,10 @@ pub enum KeyspaceError {
     /// No more indexes available in nodes to index mapping.
     #[error("Out of indexes in nodes to index mapping")]
     OutOfIndexes,
+
+    /// Shards not initialized
+    #[error("Shards not initialized")]
+    ShardsNotInitialized,
 }
 
 pub type KeyspaceResult<T> = Result<T, KeyspaceError>;

@@ -1,3 +1,4 @@
+mod builder;
 pub mod error;
 mod interval;
 mod migration;
@@ -6,13 +7,14 @@ mod replication;
 mod sharding;
 
 pub use {
+    builder::KeyspaceBuilder,
     error::*,
     interval::{Interval, KeyspaceInterval},
     migration::MigrationPlan,
     node::{Node, NodeRef},
     replication::{DefaultReplicationStrategy, ReplicationStrategy},
 };
-use {node::Nodes, std::hash::Hash};
+use {node::Nodes, sharding::Shards, std::hash::Hash};
 
 /// Keyspace.
 ///
@@ -37,6 +39,7 @@ where
     R: ReplicationStrategy,
 {
     nodes: Nodes<N>,
+    shards: Shards<REPLICATION_FACTOR>,
     replication_strategy: R,
     version: u64,
 }
@@ -46,39 +49,61 @@ where
     N: Node,
     R: ReplicationStrategy,
 {
-
-    /// Returns key space with the given replication strategy.
+    /// Create new key space.
     ///
-    /// The key space must be empty (i.e. no nodes are added yet).
-    pub fn with_replication_strategy(self, replication_strategy: R) -> KeyspaceResult<Self> {
-        if self.version != 0 {
-            return Err(KeyspaceError::NonEmptyKeyspace);
+    /// Make sure that at least `REPLICATION_FACTOR` nodes are added to the
+    /// keyspace, otherwise the keyspace will not be able to function properly.
+    fn new<I: IntoIterator<Item = N>>(
+        init_nodes: I,
+        replication_strategy: R,
+    ) -> KeyspaceResult<Self> {
+        let mut nodes = Nodes::new();
+        for node in init_nodes {
+            nodes.insert(node)?;
         }
 
+        let shards = Shards::new(&nodes, replication_strategy.clone())?;
+
         Ok(Self {
-            nodes: self.nodes,
+            nodes,
+            shards,
             replication_strategy,
-            version: self.version,
+            version: 0,
         })
     }
 
     /// Add a node to the keyspace.
     ///
     /// The node will claim one or more intervals of the keyspace.
-    pub fn add_node(&self, node: N) -> KeyspaceResult<MigrationPlan<N>> {
+    pub fn add_node(&mut self, node: N) -> KeyspaceResult<MigrationPlan<N>> {
+        self.nodes.insert(node)?;
+
+        // Recalculate the shards.
+        let old_shards = self.shards.clone();
+        self.shards = Shards::new(&self.nodes, self.replication_strategy.clone())?;
+
+        // Calculate migration plan from updated shards.
+        let migration: MigrationPlan<N> =
+            MigrationPlan::new(self.version, old_shards.iter(), self.shards.iter());
+
+        self.version += 1;
         todo!()
     }
 
     /// Remove a node from the keyspace.
-    pub fn remove_node(&self, node: &N) -> KeyspaceResult<MigrationPlan<N>> {
+    pub fn remove_node(&self, id: N::NodeId) -> KeyspaceResult<MigrationPlan<N>> {
         todo!()
     }
 
     /// Replace all nodes in the keyspace with a new batch of nodes.
-    pub fn set_nodes(
-        &self,
-        nodes: impl IntoIterator<Item = N>,
+    pub fn set_nodes<I: IntoIterator<Item = N>>(
+        &mut self,
+        nodes: I,
     ) -> KeyspaceResult<MigrationPlan<N>> {
+        // we need way to merge individual migration plans
+        for node in nodes {
+            self.nodes.insert(node)?;
+        }
         todo!()
     }
 
@@ -103,18 +128,5 @@ where
     /// Version is incremented each time the keyspace is modified.
     fn version(&self) -> u64 {
         self.version
-    }
-}
-
-impl<N> Keyspace<N>
-where
-    N: Node,
-{
-    pub fn new() -> Self {
-        Self {
-            nodes: Nodes::new(),
-            replication_strategy: DefaultReplicationStrategy::new(),
-            version: 0,
-        }
     }
 }
