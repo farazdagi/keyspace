@@ -1,15 +1,12 @@
 use {
-    crate::{KeyspaceError, KeyspaceResult},
     auto_impl::auto_impl,
+    rapidhash::RapidBuildHasher,
     std::{
-        collections::{HashMap, VecDeque},
-        fmt,
-        hash::Hash,
+        collections::HashMap,
+        hash::{BuildHasher, Hash},
         ops::Index,
     },
 };
-
-pub(crate) type NodeIdx = u16;
 
 /// Node that stores data.
 ///
@@ -18,11 +15,6 @@ pub(crate) type NodeIdx = u16;
 /// replicas).
 #[auto_impl(&)]
 pub trait Node: Hash + 'static {
-    type NodeId: fmt::Debug + Hash + Eq;
-
-    /// Returns the node id.
-    fn id(&self) -> &Self::NodeId;
-
     /// Capacity of the node.
     ///
     /// The capacity is used to determine what portion of the keyspace the
@@ -42,13 +34,7 @@ pub trait Node: Hash + 'static {
 macro_rules! impl_node {
     ($($t:ty),*) => {
         $(
-            impl Node for $t {
-                type NodeId = Self;
-
-                fn id(&self) -> &Self::NodeId {
-                    self
-                }
-            }
+            impl Node for $t {}
         )*
     };
 }
@@ -66,37 +52,27 @@ pub trait NodeRef<'a, T: Node> {}
 
 impl<'a, T: Node> NodeRef<'a, T> for &'a T {}
 
+/// Node hash.
+pub(crate) type NodeIdx = u64;
+
 /// Nodes collection.
 ///
-/// The collection assigns each node an index, which serves as a handle
-/// throughout the rest of the system -- this way wherever we need to store the
-/// node, we can just store the index (which is currently a `u16` number taking
-/// up only two bytes).
-pub(crate) struct Nodes<N: Node> {
-    /// Stored nodes.
+/// The collection assigns each node an index (by hashing the node), which
+/// serves as a handle throughout the rest of the system. This way wherever we
+/// need to store the node, we store the index (which takes 8 bytes, `u64`).
+pub(crate) struct Nodes<N: Node, H: BuildHasher = RapidBuildHasher> {
     nodes: HashMap<NodeIdx, N>,
-
-    /// Next index that will be assigned to a node.
-    ///
-    /// If the free list is not empty, the next index will be taken from it.
-    next_idx: NodeIdx,
-
-    /// When a node is removed from, its index is added to this queue, so that
-    /// it can be reused.
-    free_list: VecDeque<NodeIdx>,
+    build_hasher: H,
+    version: u64,
 }
 
 impl<N: Node> Default for Nodes<N> {
     fn default() -> Self {
-        Self {
-            nodes: HashMap::new(),
-            next_idx: 0,
-            free_list: VecDeque::new(),
-        }
+        Self::new()
     }
 }
 
-impl<N: Node> Index<NodeIdx> for Nodes<N> {
+impl<N: Node, H: BuildHasher> Index<NodeIdx> for Nodes<N, H> {
     type Output = N;
 
     fn index(&self, idx: NodeIdx) -> &Self::Output {
@@ -107,38 +83,53 @@ impl<N: Node> Index<NodeIdx> for Nodes<N> {
 impl<N: Node> Nodes<N> {
     /// Creates a new empty nodes collection.
     pub fn new() -> Self {
-        Self::default()
+        Self::with_build_hasher(RapidBuildHasher::default())
+    }
+}
+
+impl<N: Node, H: BuildHasher> Nodes<N, H> {
+    /// Creates a new empty nodes collection with the given hasher.
+    pub fn with_build_hasher(build_hasher: H) -> Self {
+        Self {
+            nodes: HashMap::new(),
+            build_hasher,
+            version: 0,
+        }
     }
 
     /// Adds a node to the collection.
     ///
     /// Returns the index of the node in the collection.
-    pub fn insert(&mut self, node: N) -> KeyspaceResult<NodeIdx> {
-        let idx = if let Some(idx) = self.free_list.pop_front() {
-            idx
-        } else {
-            self.next_idx = self
-                .next_idx
-                .checked_add(1)
-                .ok_or(KeyspaceError::OutOfIndexes)?;
-            self.next_idx - 1
-        };
-
+    pub fn insert(&mut self, node: N) -> NodeIdx {
+        let idx = self.build_hasher.hash_one(&node);
         self.nodes.insert(idx, node);
-        Ok(idx)
+        self.version += 1;
+
+        idx
     }
 
     /// Removes and returns (if existed) a node from the collection.
     pub fn remove(&mut self, idx: NodeIdx) -> Option<N> {
         self.nodes.remove(&idx).and_then(|node| {
-            self.free_list.push_back(idx);
+            self.version += 1;
             Some(node)
         })
+    }
+
+    /// Returns index of a given node.
+    /// Normally, the index is calculated by hashing the node.
+    pub fn idx(&self, node: &N) -> NodeIdx {
+        self.build_hasher.hash_one(node)
     }
 
     /// Returns a reference to the node with given index.
     pub fn get(&self, idx: NodeIdx) -> Option<&N> {
         self.nodes.get(&idx)
+    }
+
+    /// Returns the version of the collection.
+    pub fn version(&self) -> u64 {
+        self.version
     }
 
     /// Number of nodes in the collection.
@@ -172,7 +163,7 @@ impl<N: Node> Nodes<N> {
 mod tests {
     use super::*;
 
-    fn check_node<T: Node>(node: &T, id: T::NodeId, capacity: usize) {
+    fn check_node(node: &TestNode, id: String, capacity: usize) {
         assert_eq!(node.id(), &id);
         assert_eq!(node.capacity(), capacity);
     }
@@ -184,9 +175,13 @@ mod tests {
     }
 
     impl Node for TestNode {
-        type NodeId = String;
+        fn capacity(&self) -> usize {
+            self.capacity
+        }
+    }
 
-        fn id(&self) -> &Self::NodeId {
+    impl TestNode {
+        fn id(&self) -> &String {
             &self.id
         }
 
@@ -198,14 +193,16 @@ mod tests {
     #[test]
     fn basic_ops() {
         let mut nodes = Nodes::new();
+        let mut indexes = vec![];
 
         (0..5).for_each(|i| {
             let node = TestNode {
                 id: format!("node{}", i),
                 capacity: 10,
             };
-            let idx = nodes.insert(node).unwrap();
+            let idx = nodes.insert(node);
             check_node(&nodes[idx], format!("node{}", i), 10);
+            indexes.push(idx);
         });
 
         // Check that the nodes are in the collection
@@ -213,16 +210,11 @@ mod tests {
             check_node(&nodes[idx], node.id.clone(), node.capacity);
         }
 
-        // Reuse indices.
-        let remove_idx = 3;
+        // Remove nodes and check that they are removed
+        let remove_idx = indexes[3];
         let removed_node = nodes.remove(remove_idx).unwrap();
         assert_eq!(removed_node.id(), "node3");
-        let new_node = TestNode {
-            id: "node6".to_string(),
-            capacity: 40,
-        };
-        let new_idx = nodes.insert(new_node).unwrap();
-        assert_eq!(new_idx, remove_idx);
-        assert_eq!(nodes[new_idx].id(), "node6");
+        assert_eq!(nodes.len(), 4);
+        assert!(nodes.get(remove_idx).is_none());
     }
 }

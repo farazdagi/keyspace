@@ -65,7 +65,7 @@ where
     ) -> KeyspaceResult<Self> {
         let mut nodes = Nodes::new();
         for node in init_nodes {
-            nodes.insert(node)?;
+            nodes.insert(node);
         }
 
         let shards = Shards::new(&nodes, replication_strategy.clone())?;
@@ -81,7 +81,7 @@ where
     ///
     /// The node will claim one or more intervals of the keyspace.
     pub fn add_node(&mut self, node: N) -> KeyspaceResult<MigrationPlan<N>> {
-        self.nodes.insert(node)?;
+        self.nodes.insert(node);
 
         // Recalculate the shards.
         let old_shards = self.shards.clone();
@@ -89,14 +89,14 @@ where
 
         // Calculate migration plan from updated shards.
         let migration: MigrationPlan<N> =
-            MigrationPlan::new(self.version, old_shards.iter(), self.shards.iter());
+            MigrationPlan::new(&self.nodes, old_shards.iter(), self.shards.iter());
 
         self.version += 1;
         todo!()
     }
 
     /// Remove a node from the keyspace.
-    pub fn remove_node(&self, id: N::NodeId) -> KeyspaceResult<MigrationPlan<N>> {
+    pub fn remove_node(&self, _node: &N) -> KeyspaceResult<MigrationPlan<N>> {
         todo!()
     }
 
@@ -107,7 +107,7 @@ where
     ) -> KeyspaceResult<MigrationPlan<N>> {
         // we need way to merge individual migration plans
         for node in nodes {
-            self.nodes.insert(node)?;
+            self.nodes.insert(node);
         }
         todo!()
     }
@@ -136,7 +136,7 @@ where
     /// Keyspace version.
     ///
     /// Version is incremented each time the keyspace is modified.
-    fn version(&self) -> u64 {
+    pub fn version(&self) -> u64 {
         self.version
     }
 }

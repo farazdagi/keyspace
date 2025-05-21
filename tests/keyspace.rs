@@ -8,17 +8,15 @@ struct SimpleNode {
     id: String,
 }
 
-impl Node for SimpleNode {
-    type NodeId = String;
-
-    fn id(&self) -> &Self::NodeId {
-        &self.id
-    }
-}
+impl Node for SimpleNode {}
 
 impl SimpleNode {
     fn new(id: &str) -> Self {
         Self { id: id.to_string() }
+    }
+
+    fn id(&self) -> &String {
+        &self.id
     }
 }
 
@@ -96,12 +94,15 @@ fn replica_set_fair_distribution() {
         .build()
         .expect("Failed to create keyspace");
 
+    // Up until nodes are added or removed, the version is 0.
+    assert_eq!(keyspace.version(), 0);
+
     let key_replica_pairs = vec![
         (0x0000_5678_9012_3456, vec!["node1"]),
         (0x0000_FFFF_9012_3456, vec!["node1"]),
-        (0x0001_FFFF_9012_3456, vec!["node0"]),
-        (0x0002_FFFF_9012_3456, vec!["node1"]),
-        (0x0002_00FF_9012_3456, vec!["node1"]),
+        (0x0001_FFFF_9012_3456, vec!["node6"]),
+        (0x0042_FFFF_9012_3456, vec!["node0"]),
+        (0x0042_00FF_9012_3456, vec!["node0"]),
         (0x1234_5678_9012_3456, vec!["node3"]),
         (0x1234_2678_9012_3456, vec!["node3"]),
     ];

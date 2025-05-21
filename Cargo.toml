@@ -17,3 +17,4 @@ categories = ["algorithms", "data-structures"]
 thiserror = "2.0"
 hrw-hash = "1"
 auto_impl = "1.3"
+rapidhash = "1.4"
