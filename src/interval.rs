@@ -7,7 +7,7 @@ use {
     std::{collections::HashSet, ops::Range},
 };
 
-/// A range of keys in the key space.
+/// A range of keys in the keyspace.
 #[derive(Debug, Clone, Copy)]
 pub enum KeyRange {
     Bounded(KeyPosition, KeyPosition),
@@ -26,7 +26,7 @@ impl KeyRange {
     /// Check if the given key is in the range.
     ///
     /// Note not the key itself, but the hash of the key provides the position
-    /// within key space.
+    /// within keyspace.
     pub fn contains(&self, key_hash: KeyPosition) -> bool {
         match self {
             KeyRange::Bounded(start, end) => key_hash >= *start && key_hash < *end,

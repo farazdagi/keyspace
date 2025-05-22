@@ -34,7 +34,7 @@ impl ShardIdx {
     }
 }
 
-/// Shard is a portion of the key space controlled by a set of nodes.
+/// Shard is a portion of the keyspace controlled by a set of nodes.
 #[derive(Debug)]
 pub(crate) struct Shard<'a, const RF: usize> {
     idx: ShardIdx,
@@ -69,15 +69,15 @@ impl<'a, const RF: usize> Shard<'a, RF> {
     }
 }
 
-/// Key space is uniformly divided into shards.
+/// Keyspace is uniformly divided into shards.
 ///
-/// Each shard is a replica set of nodes that are responsible for the data
-/// in that key space portion.
+/// Each shard is a replica set of nodes that are responsible for the data in
+/// that keyspace portion.
 #[derive(Clone)]
 pub(crate) struct Shards<const RF: usize>(Vec<ReplicaSet<NodeIdx, RF>>);
 
 impl<const RF: usize> Shards<RF> {
-    /// Creates a new key space with each shard controlled by a replica set of
+    /// Creates a new keyspace with each shard controlled by a replica set of
     /// nodes.
     pub fn new<N, R, H>(nodes: &Nodes<N, H>, replication_strategy: R) -> KeyspaceResult<Self>
     where

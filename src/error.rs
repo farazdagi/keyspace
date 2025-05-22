@@ -8,7 +8,7 @@ pub enum KeyspaceError {
     #[error("Incomplete replica set")]
     IncompleteReplicaSet,
 
-    /// Key space is not empty
+    /// Keyspace is not empty
     #[error("Non-empty keyspace")]
     NonEmptyKeyspace,
 

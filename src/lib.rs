@@ -21,7 +21,7 @@ use {
     std::hash::BuildHasher,
 };
 
-/// Position of a key in the key space.
+/// Position of a key in the keyspace.
 pub type KeyPosition = u64;
 
 /// Keyspace.
@@ -58,7 +58,7 @@ where
     N: Node,
     R: ReplicationStrategy,
 {
-    /// Create new key space.
+    /// Create new keyspace.
     ///
     /// Make sure that at least `RF` nodes are added to the
     /// keyspace, otherwise the keyspace will not be able to function properly.
@@ -80,7 +80,7 @@ where
     R: ReplicationStrategy,
     H: BuildHasher,
 {
-    /// Create new key space.
+    /// Create new keyspace.
     ///
     /// Make sure that at least `RF` nodes are added to the
     /// keyspace, otherwise the keyspace will not be able to function properly.
@@ -106,14 +106,14 @@ where
     /// Add a node to the keyspace.
     ///
     /// The node will claim one or more intervals of the keyspace.
-    pub fn add_node(&mut self, node: N) -> KeyspaceResult<MigrationPlan<N,H>> {
+    pub fn add_node(&mut self, node: N) -> KeyspaceResult<MigrationPlan<N, H>> {
         self.nodes.insert(node);
 
         self.migration_plan()
     }
 
     /// Remove a node from the keyspace.
-    pub fn remove_node(&mut self, node: &N) -> KeyspaceResult<MigrationPlan<N,H>> {
+    pub fn remove_node(&mut self, node: &N) -> KeyspaceResult<MigrationPlan<N, H>> {
         self.nodes.remove(self.nodes.idx(node));
         self.migration_plan()
     }
@@ -131,7 +131,7 @@ where
 
     /// Returns replication factor (`RF`) number of nodes responsible for the
     /// given key position. Key is, normally, hashed to determine the position
-    /// in the key space.
+    /// in the keyspace.
     ///
     /// The first node is assumed to be the primary node.
     pub fn replicas(&self, key_position: KeyPosition) -> impl Iterator<Item = &N> {
@@ -149,7 +149,7 @@ where
         self.version
     }
 
-    /// Key space as intervals controlled by the nodes.
+    /// Keyspace as intervals controlled by the nodes.
     ///
     /// Each interval is a half-open `[start_key..end_key)` range of controlled
     /// keys, with one or more replicas assigned.
@@ -170,7 +170,7 @@ where
             })
     }
 
-    /// Key space intervals controlled by the given node.
+    /// Keyspace intervals controlled by the given node.
     pub fn iter_node(&self, node: &N) -> impl Iterator<Item = KeyRange> {
         self.iter().filter_map(move |(other_node, key_range)| {
             // dbg!((&other_node, &key_range));
