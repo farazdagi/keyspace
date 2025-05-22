@@ -5,12 +5,12 @@ use {
         KeyspaceResult,
         Node,
         ReplicationStrategy,
-        interval::{ KeyRange},
+        interval::KeyRange,
         node::{NodeIdx, Nodes},
         replication::ReplicaSet,
     },
     hrw_hash::HrwNodes,
-    std::ops::Deref,
+    std::{hash::BuildHasher, ops::Deref},
 };
 
 /// Shard index.
@@ -79,16 +79,18 @@ pub(crate) struct Shards<const RF: usize>(Vec<ReplicaSet<NodeIdx, RF>>);
 impl<const RF: usize> Shards<RF> {
     /// Creates a new key space with each shard controlled by a replica set of
     /// nodes.
-    pub fn new<N: Node, R: ReplicationStrategy>(
-        nodes: &Nodes<N>,
-        replication_strategy: R,
-    ) -> KeyspaceResult<Self> {
+    pub fn new<N, R, H>(nodes: &Nodes<N, H>, replication_strategy: R) -> KeyspaceResult<Self>
+    where
+        N: Node,
+        R: ReplicationStrategy,
+        H: BuildHasher,
+    {
         if nodes.len() < RF {
             return Err(KeyspaceError::NotEnoughNodes(RF));
         }
 
         // Highest random weight (HRW) algorithm is used to select the nodes.
-        let hrw = HrwNodes::new(nodes.indexes());
+        let hrw = HrwNodes::new(nodes.keys().copied());
 
         let mut shards = Vec::with_capacity(ShardIdx::MAX.0 as usize + 1);
         for idx in 0..=ShardIdx::MAX.0 {

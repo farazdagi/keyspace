@@ -7,22 +7,29 @@ use {
         replication::ReplicaSet,
         sharding::{Shard, Shards},
     },
-    std::collections::{HashMap, HashSet},
+    std::{
+        collections::{HashMap, HashSet},
+        hash::BuildHasher,
+    },
 };
 
 /// Data migration plan.
-pub struct MigrationPlan<'a, N: Node> {
+pub struct MigrationPlan<'a, N: Node, H: BuildHasher> {
     /// Mapping of node id to the intervals that need to be migrated to it.
     intervals: HashMap<NodeIdx, Vec<Interval<HashSet<NodeIdx>>>>,
 
     /// Reference to the nodes of the keyspace.
-    nodes: &'a Nodes<N>,
+    nodes: &'a Nodes<N, H>,
 }
 
-impl<'a, N: Node> MigrationPlan<'a, N> {
+impl<'a, N, H> MigrationPlan<'a, N, H>
+where
+    N: Node,
+    H: BuildHasher,
+{
     /// Creates a new migration plan.
     pub(crate) fn new<const RF: usize>(
-        nodes: &'a Nodes<N>,
+        nodes: &'a Nodes<N, H>,
         old_shards: &Shards<RF>,
         new_shards: &Shards<RF>,
     ) -> KeyspaceResult<Self> {

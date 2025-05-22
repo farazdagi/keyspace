@@ -16,7 +16,9 @@ pub use {
 };
 use {
     node::Nodes,
+    rapidhash::RapidBuildHasher,
     sharding::{ShardIdx, Shards},
+    std::hash::BuildHasher,
 };
 
 /// Position of a key in the key space.
@@ -39,12 +41,13 @@ pub type KeyPosition = u64;
 ///
 /// Supports replication out of the box, so that each key is stored
 /// redundantly on multiple of nodes, for fault tolerance.
-pub struct Keyspace<N, R = DefaultReplicationStrategy, const RF: usize = 3>
+pub struct Keyspace<N, R = DefaultReplicationStrategy, const RF: usize = 3, H = RapidBuildHasher>
 where
     N: Node,
     R: ReplicationStrategy,
+    H: BuildHasher,
 {
-    nodes: Nodes<N>,
+    nodes: Nodes<N, H>,
     shards: Shards<RF>,
     replication_strategy: R,
     version: u64,
@@ -63,7 +66,30 @@ where
         init_nodes: I,
         replication_strategy: R,
     ) -> KeyspaceResult<Self> {
-        let mut nodes = Nodes::new();
+        Self::with_build_hasher(
+            RapidBuildHasher::default(),
+            init_nodes,
+            replication_strategy,
+        )
+    }
+}
+
+impl<N, R, const RF: usize, H> Keyspace<N, R, RF, H>
+where
+    N: Node,
+    R: ReplicationStrategy,
+    H: BuildHasher,
+{
+    /// Create new key space.
+    ///
+    /// Make sure that at least `RF` nodes are added to the
+    /// keyspace, otherwise the keyspace will not be able to function properly.
+    fn with_build_hasher<I: IntoIterator<Item = N>>(
+        build_hasher: H,
+        init_nodes: I,
+        replication_strategy: R,
+    ) -> KeyspaceResult<Self> {
+        let mut nodes = Nodes::with_build_hasher(build_hasher);
         for node in init_nodes {
             nodes.insert(node);
         }
@@ -80,14 +106,14 @@ where
     /// Add a node to the keyspace.
     ///
     /// The node will claim one or more intervals of the keyspace.
-    pub fn add_node(&mut self, node: N) -> KeyspaceResult<MigrationPlan<N>> {
+    pub fn add_node(&mut self, node: N) -> KeyspaceResult<MigrationPlan<N,H>> {
         self.nodes.insert(node);
 
         self.migration_plan()
     }
 
     /// Remove a node from the keyspace.
-    pub fn remove_node(&mut self, node: &N) -> KeyspaceResult<MigrationPlan<N>> {
+    pub fn remove_node(&mut self, node: &N) -> KeyspaceResult<MigrationPlan<N,H>> {
         self.nodes.remove(self.nodes.idx(node));
         self.migration_plan()
     }
@@ -96,7 +122,7 @@ where
     pub fn set_nodes<I: IntoIterator<Item = N>>(
         &mut self,
         nodes: I,
-    ) -> KeyspaceResult<MigrationPlan<N>> {
+    ) -> KeyspaceResult<MigrationPlan<N, H>> {
         for node in nodes {
             self.nodes.insert(node);
         }
@@ -156,7 +182,7 @@ where
         })
     }
 
-    fn migration_plan(&mut self) -> KeyspaceResult<MigrationPlan<N>> {
+    fn migration_plan(&mut self) -> KeyspaceResult<MigrationPlan<N, H>> {
         // Recalculate the shards.
         let old_shards = self.shards.clone();
         self.shards = Shards::new(&self.nodes, self.replication_strategy.clone())?;

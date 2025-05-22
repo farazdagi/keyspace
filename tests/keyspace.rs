@@ -1,32 +1,11 @@
 use {
-    keyspace::{DefaultReplicationStrategy, KeyspaceBuilder, KeyspaceError, Node},
+    keyspace::{DefaultReplicationStrategy, KeyspaceBuilder, KeyspaceError},
     std::{collections::HashMap, hash::BuildHasher},
 };
 
-#[derive(Hash, Clone)]
-struct SimpleNode {
-    id: String,
-}
-
-impl Node for SimpleNode {}
-
-impl SimpleNode {
-    fn new(id: &str) -> Self {
-        Self { id: id.to_string() }
-    }
-
-    fn id(&self) -> &String {
-        &self.id
-    }
-}
-
 #[test]
 fn keyspace_builder() {
-    let init_nodes = vec![
-        SimpleNode::new("node1"),
-        SimpleNode::new("node2"),
-        SimpleNode::new("node3"),
-    ];
+    let init_nodes = vec!["node1", "node2", "node3"];
     const RF: usize = 4;
 
     {
@@ -132,4 +111,17 @@ fn replica_set_fair_distribution() {
         diff <= threshold,
         "Replica count difference is too high: {diff} > {threshold}"
     );
+}
+
+#[test]
+fn migration_plan() {
+    let init_nodes = vec!["node1", "node2", "node3", "node4", "node5"];
+    let keyspace = KeyspaceBuilder::new(init_nodes)
+        .with_replication_factor::<3>()
+        .build()
+        .expect("Failed to create keyspace");
+
+    for  key_range in keyspace.iter_node(&"node3") {
+        println!("Key Range: {:?}",  key_range);
+    }
 }
