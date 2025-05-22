@@ -19,6 +19,10 @@ pub enum KeyspaceError {
     /// Shards not initialized
     #[error("Shards not initialized")]
     ShardsNotInitialized,
+
+    /// Number of shards in new and old keyspace do not match
+    #[error("Number of shards in new and old keyspace do not match")]
+    ShardCountMismatch,
 }
 
 pub type KeyspaceResult<T> = Result<T, KeyspaceError>;

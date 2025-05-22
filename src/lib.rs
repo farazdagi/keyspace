@@ -9,7 +9,7 @@ mod sharding;
 pub use {
     builder::KeyspaceBuilder,
     error::*,
-    interval::{Interval, KeyspaceInterval},
+    interval::{Interval, KeyRange, KeyspaceInterval},
     migration::MigrationPlan,
     node::{Node, NodeRef},
     replication::{DefaultReplicationStrategy, ReplicationStrategy},
@@ -83,21 +83,13 @@ where
     pub fn add_node(&mut self, node: N) -> KeyspaceResult<MigrationPlan<N>> {
         self.nodes.insert(node);
 
-        // Recalculate the shards.
-        let old_shards = self.shards.clone();
-        self.shards = Shards::new(&self.nodes, self.replication_strategy.clone())?;
-
-        // Calculate migration plan from updated shards.
-        let migration: MigrationPlan<N> =
-            MigrationPlan::new(&self.nodes, old_shards.iter(), self.shards.iter());
-
-        self.version += 1;
-        todo!()
+        self.migration_plan()
     }
 
     /// Remove a node from the keyspace.
-    pub fn remove_node(&self, _node: &N) -> KeyspaceResult<MigrationPlan<N>> {
-        todo!()
+    pub fn remove_node(&mut self, node: &N) -> KeyspaceResult<MigrationPlan<N>> {
+        self.nodes.remove(self.nodes.idx(node));
+        self.migration_plan()
     }
 
     /// Replace all nodes in the keyspace with a new batch of nodes.
@@ -105,11 +97,10 @@ where
         &mut self,
         nodes: I,
     ) -> KeyspaceResult<MigrationPlan<N>> {
-        // we need way to merge individual migration plans
         for node in nodes {
             self.nodes.insert(node);
         }
-        todo!()
+        self.migration_plan()
     }
 
     /// Returns replication factor (`RF`) number of nodes responsible for the
@@ -125,18 +116,55 @@ where
             .filter_map(|node_idx| self.nodes.get(*node_idx))
     }
 
-    /// Keyspace as intervals controlled by the nodes.
-    ///
-    /// Each interval is a half-open `[start_key..end_key)` range of
-    /// controlled keys, with one or more replicas assigned.
-    fn iter(&self, node: &N) -> impl Iterator<Item = KeyspaceInterval<'_, &'_ N>> {
-        std::iter::once(todo!())
-    }
-
     /// Keyspace version.
     ///
     /// Version is incremented each time the keyspace is modified.
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    /// Key space as intervals controlled by the nodes.
+    ///
+    /// Each interval is a half-open `[start_key..end_key)` range of controlled
+    /// keys, with one or more replicas assigned.
+    pub fn iter(&self) -> impl Iterator<Item = (&N, KeyRange)> {
+        self.shards
+            .iter()
+            .flat_map(|shard| {
+                // dbg!(&shard);
+                let key_range = shard.key_range();
+                shard
+                    .replica_set()
+                    .iter()
+                    .map(|idx| (*idx, key_range))
+                    .collect::<Vec<_>>()
+            })
+            .filter_map(|(idx, key_range)| {
+                self.nodes.get(idx).and_then(|node| Some((node, key_range)))
+            })
+    }
+
+    /// Key space intervals controlled by the given node.
+    pub fn iter_node(&self, node: &N) -> impl Iterator<Item = KeyRange> {
+        self.iter().filter_map(move |(other_node, key_range)| {
+            // dbg!((&other_node, &key_range));
+            if node == other_node {
+                Some(key_range)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn migration_plan(&mut self) -> KeyspaceResult<MigrationPlan<N>> {
+        // Recalculate the shards.
+        let old_shards = self.shards.clone();
+        self.shards = Shards::new(&self.nodes, self.replication_strategy.clone())?;
+
+        // Calculate migration plan from updated shards.
+        MigrationPlan::new(&self.nodes, &old_shards, &self.shards).and_then(|plan| {
+            self.version += 1;
+            Ok(plan)
+        })
     }
 }
