@@ -4,7 +4,7 @@ use {
     std::{
         collections::HashMap,
         hash::{BuildHasher, Hash},
-        ops::Index,
+        ops::{Deref, Index},
     },
 };
 
@@ -14,7 +14,7 @@ use {
 /// Keys which fall into such an interval are routed to the node (and its
 /// replicas).
 #[auto_impl(&)]
-pub trait Node: Hash + 'static {
+pub trait Node: std::fmt::Debug + Hash + PartialEq + Eq + 'static {
     /// Capacity of the node.
     ///
     /// The capacity is used to determine what portion of the keyspace the
@@ -39,7 +39,9 @@ macro_rules! impl_node {
     };
 }
 
-impl_node!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, String);
+impl_node!(
+    u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, String, str
+);
 
 /// Reference to a node.
 ///
@@ -64,6 +66,13 @@ pub(crate) struct Nodes<N: Node, H: BuildHasher = RapidBuildHasher> {
     nodes: HashMap<NodeIdx, N>,
     build_hasher: H,
     version: u64,
+}
+
+impl<N: Node, H: BuildHasher> Deref for Nodes<N, H> {
+    type Target = HashMap<NodeIdx, N>;
+    fn deref(&self) -> &Self::Target {
+        &self.nodes
+    }
 }
 
 impl<N: Node> Default for Nodes<N> {
@@ -132,31 +141,6 @@ impl<N: Node, H: BuildHasher> Nodes<N, H> {
         self.version
     }
 
-    /// Number of nodes in the collection.
-    pub fn len(&self) -> usize {
-        self.nodes.len()
-    }
-
-    /// Iterator over the nodes in the collection.
-    pub fn iter(&self) -> impl Iterator<Item = (NodeIdx, &N)> {
-        self.nodes.iter().map(|(idx, node)| (*idx, node))
-    }
-
-    /// Iterator over the indices of the nodes in the collection.
-    ///
-    /// Only valid indexes are returned, i.e. indexes that are not in the free
-    /// list.
-    pub fn indexes(&self) -> impl Iterator<Item = NodeIdx> {
-        self.nodes.keys().copied()
-    }
-
-    /// Given iterator of node indexes, returns an iterator over the nodes.
-    pub fn filter_nodes<'a>(
-        &'a self,
-        indexes: impl Iterator<Item = NodeIdx> + 'a,
-    ) -> impl Iterator<Item = &'a N> {
-        indexes.filter_map(move |idx| self.nodes.get(&idx))
-    }
 }
 
 #[cfg(test)]
@@ -168,7 +152,7 @@ mod tests {
         assert_eq!(node.capacity(), capacity);
     }
 
-    #[derive(Hash)]
+    #[derive(Hash, Debug, PartialEq, Eq)]
     struct TestNode {
         id: String,
         capacity: usize,
@@ -207,7 +191,7 @@ mod tests {
 
         // Check that the nodes are in the collection
         for (idx, node) in nodes.iter() {
-            check_node(&nodes[idx], node.id.clone(), node.capacity);
+            check_node(&nodes[*idx], node.id.clone(), node.capacity);
         }
 
         // Remove nodes and check that they are removed
