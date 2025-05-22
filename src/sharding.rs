@@ -5,12 +5,12 @@ use {
         KeyspaceResult,
         Node,
         ReplicationStrategy,
-        interval::KeyRange,
+        interval::{ KeyRange},
         node::{NodeIdx, Nodes},
         replication::ReplicaSet,
     },
     hrw_hash::HrwNodes,
-    std::ops::{Deref},
+    std::ops::Deref,
 };
 
 /// Shard index.
@@ -35,6 +35,7 @@ impl ShardIdx {
 }
 
 /// Shard is a portion of the key space controlled by a set of nodes.
+#[derive(Debug)]
 pub(crate) struct Shard<'a, const RF: usize> {
     idx: ShardIdx,
     replica_set: &'a ReplicaSet<NodeIdx, RF>,
@@ -114,11 +115,11 @@ impl<const RF: usize> Shards<RF> {
         self.0
             .iter()
             .enumerate()
-            .map(|(idx, shard)| Shard::new(ShardIdx::from_position(idx as KeyPosition), shard))
+            .map(|(idx, replica_set)| Shard::new(ShardIdx(idx as u16), replica_set))
     }
 
     /// Returns the number of shards in the keyspace.
-    pub fn num_shards(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 

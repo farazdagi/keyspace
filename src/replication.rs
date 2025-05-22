@@ -1,4 +1,7 @@
-use super::{KeyspaceError, KeyspaceResult, Node};
+use {
+    super::{KeyspaceError, KeyspaceResult, Node},
+    std::ops::Deref,
+};
 
 /// Replication strategy determines how to choose the nodes for redundancy.
 ///
@@ -41,8 +44,16 @@ impl DefaultReplicationStrategy {
 }
 
 /// Set of nodes that are used to store a replica of the data.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ReplicaSet<N, const RF: usize>([N; RF]);
+
+impl<N, const RF: usize> Deref for ReplicaSet<N, RF> {
+    type Target = [N; RF];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl<T, const RF: usize> ReplicaSet<T, RF>
 where
@@ -63,9 +74,3 @@ where
     }
 }
 
-impl<T, const RF: usize> ReplicaSet<T, RF> {
-    /// Iterator over the nodes in the replica set.
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.0.iter()
-    }
-}
