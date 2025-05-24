@@ -1,6 +1,6 @@
 use {
-    super::{KeyspaceError, KeyspaceResult, Node},
-    std::ops::Deref,
+    super::{KeyspaceError, KeyspaceResult, Node, NodeRef},
+    std::{collections::BTreeSet, ops::Deref},
 };
 
 /// Replication strategy determines how to choose the nodes for redundancy.
@@ -9,7 +9,7 @@ use {
 /// shard of the keyspace, i.e. a single replica set of nodes.
 pub trait ReplicationStrategy {
     /// Checks if the given node is eligible for inclusion into a replica set.
-    fn is_eligible_replica<N: Node>(&mut self, node: &N) -> bool;
+    fn is_eligible_replica<N: Node>(&mut self, node: NodeRef<N>) -> bool;
 
     /// Builds a new instance of the replication strategy.
     fn clone(&self) -> Self;
@@ -18,10 +18,11 @@ pub trait ReplicationStrategy {
 /// Default replication strategy.
 ///
 /// Any node is suitable for the default replication strategy.
+#[derive(Debug, Clone, Copy)]
 pub struct DefaultReplicationStrategy {}
 
 impl ReplicationStrategy for DefaultReplicationStrategy {
-    fn is_eligible_replica<N: Node>(&mut self, _node: &N) -> bool {
+    fn is_eligible_replica<N: Node>(&mut self, _node: NodeRef<N>) -> bool {
         true
     }
 
@@ -44,8 +45,18 @@ impl DefaultReplicationStrategy {
 }
 
 /// Set of nodes that are used to store a replica of the data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct ReplicaSet<N, const RF: usize>([N; RF]);
+
+impl<N: Ord + Eq, const RF: usize> PartialEq for ReplicaSet<N, RF> {
+    fn eq(&self, other: &Self) -> bool {
+        let self_set: BTreeSet<_> = self.0.iter().collect();
+        let other_set: BTreeSet<_> = other.0.iter().collect();
+        self_set == other_set
+    }
+}
+
+impl<N: Ord + Eq, const RF: usize> Eq for ReplicaSet<N, RF> {}
 
 impl<N, const RF: usize> Deref for ReplicaSet<N, RF> {
     type Target = [N; RF];
@@ -73,4 +84,3 @@ where
         Ok(ReplicaSet(items))
     }
 }
-

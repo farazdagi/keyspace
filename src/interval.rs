@@ -1,14 +1,7 @@
-use {
-    super::{
-        KeyPosition,
-        Node,
-        node::{NodeIdx, Nodes},
-    },
-    std::{collections::HashSet, ops::Range},
-};
+use super::KeyPosition;
 
 /// A range of keys in the keyspace.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyRange {
     Bounded(KeyPosition, KeyPosition),
     Unbounded(KeyPosition),
@@ -16,7 +9,7 @@ pub enum KeyRange {
 
 impl KeyRange {
     /// Create a new key range from the given start and end positions.
-    pub(crate) fn new(start: KeyPosition, end: Option<KeyPosition>) -> Self {
+    pub fn new(start: KeyPosition, end: Option<KeyPosition>) -> Self {
         match end {
             Some(end) => KeyRange::Bounded(start, end),
             None => KeyRange::Unbounded(start),
@@ -39,6 +32,7 @@ impl KeyRange {
 ///
 /// Range bounded inclusively below and exclusively above i.e.
 /// `[start..end)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Interval<NODES> {
     key_range: KeyRange,
     nodes: NODES,
@@ -61,10 +55,12 @@ impl<NODES> Interval<NODES> {
     }
 }
 
-/// Interval that, for a given key range, specifies source to pull data from.
-///
-/// A set of nodes responsible for the interval as a `HashSet`.
-pub type PendingInterval<'a, N> = Interval<HashSet<&'a N>>;
-
-/// Interval with a reference to the nodes of the keyspace.
-pub type KeyspaceInterval<'a, N> = Interval<&'a [N]>;
+impl<T> Interval<Vec<&T>> {
+    pub fn copied(&self) -> Interval<Vec<T>>
+    where
+        T: Clone,
+    {
+        let nodes = self.nodes.clone().into_iter().cloned().collect::<Vec<_>>();
+        Interval::new(self.key_range, nodes)
+    }
+}

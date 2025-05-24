@@ -2,24 +2,45 @@ use {
     super::{
         KeyspaceError,
         KeyspaceResult,
-        interval::{Interval, PendingInterval},
+        NodeRef,
+        interval::Interval,
         node::{Node, NodeIdx, Nodes},
-        replication::ReplicaSet,
-        sharding::{Shard, Shards},
+        sharding::Shards,
     },
-    std::{
-        collections::{HashMap, HashSet},
-        hash::BuildHasher,
-    },
+    std::{collections::HashMap, fmt, hash::BuildHasher, ops::Deref},
 };
 
 /// Data migration plan.
 pub struct MigrationPlan<'a, N: Node, H: BuildHasher> {
     /// Mapping of node id to the intervals that need to be migrated to it.
-    intervals: HashMap<NodeIdx, Vec<Interval<HashSet<NodeIdx>>>>,
+    intervals: HashMap<NodeIdx, Vec<Interval<Vec<NodeIdx>>>>,
 
     /// Reference to the nodes of the keyspace.
     nodes: &'a Nodes<N, H>,
+}
+
+impl<'a, N, H> Deref for MigrationPlan<'a, N, H>
+where
+    N: Node,
+    H: BuildHasher,
+{
+    type Target = HashMap<NodeIdx, Vec<Interval<Vec<NodeIdx>>>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.intervals
+    }
+}
+
+impl<'a, N, H> fmt::Debug for MigrationPlan<'a, N, H>
+where
+    N: Node,
+    H: BuildHasher,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MigrationPlan")
+            .field("intervals", &self.intervals)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<'a, N, H> MigrationPlan<'a, N, H>
@@ -55,11 +76,11 @@ where
 
                 // Pull the data from the old replica set to the target node.
                 intervals
-                    .entry(old_replica_set[0])
+                    .entry(target_node_idx)
                     .or_insert_with(Vec::new)
                     .push(Interval::new(
                         key_range,
-                        new_replica_set.iter().copied().collect(),
+                        old_replica_set.iter().copied().collect(),
                     ));
             }
         }
@@ -73,13 +94,13 @@ where
     }
 
     /// Intervals that need to be pulled to the given node.
-    pub fn pending_intervals(&self, node: &N) -> impl Iterator<Item = Interval<Vec<&N>>> {
+    pub fn pull_intervals(&self, node: &N) -> impl Iterator<Item = Interval<Vec<NodeRef<N>>>> {
         self.intervals
             .get(&self.nodes.idx(node))
             .into_iter()
             .flat_map(|intervals| {
                 intervals.iter().map(|interval| {
-                    let nodes: Vec<&N> = interval
+                    let nodes = interval
                         .nodes()
                         .iter()
                         .filter_map(|idx| self.nodes.get(*idx))

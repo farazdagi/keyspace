@@ -9,7 +9,7 @@ mod sharding;
 pub use {
     builder::KeyspaceBuilder,
     error::*,
-    interval::{Interval, KeyRange, KeyspaceInterval},
+    interval::{Interval, KeyRange},
     migration::MigrationPlan,
     node::{Node, NodeRef},
     replication::{DefaultReplicationStrategy, ReplicationStrategy},
@@ -18,7 +18,7 @@ use {
     node::Nodes,
     rapidhash::RapidBuildHasher,
     sharding::{ShardIdx, Shards},
-    std::hash::BuildHasher,
+    std::hash::{BuildHasher, Hash},
 };
 
 /// Position of a key in the keyspace.
@@ -53,27 +53,6 @@ where
     version: u64,
 }
 
-impl<N, R, const RF: usize> Keyspace<N, R, RF>
-where
-    N: Node,
-    R: ReplicationStrategy,
-{
-    /// Create new keyspace.
-    ///
-    /// Make sure that at least `RF` nodes are added to the
-    /// keyspace, otherwise the keyspace will not be able to function properly.
-    fn new<I: IntoIterator<Item = N>>(
-        init_nodes: I,
-        replication_strategy: R,
-    ) -> KeyspaceResult<Self> {
-        Self::with_build_hasher(
-            RapidBuildHasher::default(),
-            init_nodes,
-            replication_strategy,
-        )
-    }
-}
-
 impl<N, R, const RF: usize, H> Keyspace<N, R, RF, H>
 where
     N: Node,
@@ -106,7 +85,7 @@ where
     /// Add a node to the keyspace.
     ///
     /// The node will claim one or more intervals of the keyspace.
-    pub fn add_node(&mut self, node: N) -> KeyspaceResult<MigrationPlan<N, H>> {
+    pub fn add_node<'a, 'b: 'a>(&'b mut self, node: N) -> KeyspaceResult<MigrationPlan<'a, N, H>> {
         self.nodes.insert(node);
 
         self.migration_plan()
@@ -134,7 +113,8 @@ where
     /// in the keyspace.
     ///
     /// The first node is assumed to be the primary node.
-    pub fn replicas(&self, key_position: KeyPosition) -> impl Iterator<Item = &N> {
+    pub fn replicas<K: Hash>(&self, key: &K) -> impl Iterator<Item = NodeRef<N>> {
+        let key_position = self.nodes.build_hasher().hash_one(key);
         let shard_idx = ShardIdx::from_position(key_position);
         let replica_set = self.shards.replica_set(shard_idx);
         replica_set
@@ -153,11 +133,10 @@ where
     ///
     /// Each interval is a half-open `[start_key..end_key)` range of controlled
     /// keys, with one or more replicas assigned.
-    pub fn iter(&self) -> impl Iterator<Item = (&N, KeyRange)> {
+    pub fn iter(&self) -> impl Iterator<Item = (NodeRef<N>, KeyRange)> {
         self.shards
             .iter()
             .flat_map(|shard| {
-                // dbg!(&shard);
                 let key_range = shard.key_range();
                 shard
                     .replica_set()
@@ -173,8 +152,7 @@ where
     /// Keyspace intervals controlled by the given node.
     pub fn iter_node(&self, node: &N) -> impl Iterator<Item = KeyRange> {
         self.iter().filter_map(move |(other_node, key_range)| {
-            // dbg!((&other_node, &key_range));
-            if node == other_node {
+            if other_node == node {
                 Some(key_range)
             } else {
                 None

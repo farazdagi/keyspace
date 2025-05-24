@@ -1,5 +1,5 @@
 use {
-    keyspace::{DefaultReplicationStrategy, KeyspaceBuilder, KeyspaceError},
+    keyspace::{DefaultReplicationStrategy, KeyRange, KeyspaceBuilder, KeyspaceError},
     std::{collections::HashMap, hash::BuildHasher},
 };
 
@@ -77,16 +77,16 @@ fn replica_set_fair_distribution() {
     assert_eq!(keyspace.version(), 0);
 
     let key_replica_pairs = vec![
-        (0x0000_5678_9012_3456, vec!["node1"]),
-        (0x0000_FFFF_9012_3456, vec!["node1"]),
-        (0x0001_FFFF_9012_3456, vec!["node6"]),
-        (0x0042_FFFF_9012_3456, vec!["node0"]),
-        (0x0042_00FF_9012_3456, vec!["node0"]),
-        (0x1234_5678_9012_3456, vec!["node3"]),
-        (0x1234_2678_9012_3456, vec!["node3"]),
+        ("key1", vec!["node0"]),
+        ("key2", vec!["node1"]),
+        ("key3", vec!["node9"]),
+        ("key4", vec!["node9"]),
+        ("key5", vec!["node3"]),
+        ("key6", vec!["node2"]),
+        ("key7", vec!["node6"]),
     ];
     for (key, expected_replicas) in key_replica_pairs {
-        let replicas = keyspace.replicas(key).collect::<Vec<_>>();
+        let replicas = keyspace.replicas(&key).collect::<Vec<_>>();
         assert_eq!(replicas, expected_replicas);
     }
 
@@ -94,11 +94,11 @@ fn replica_set_fair_distribution() {
 
     // Hash all u16 numbers into keys.
     // Get replica for each key, count how many keys landed on each replica.
-    let mut replica_count = HashMap::<&String, usize>::new();
+    let mut replica_count = HashMap::<_, usize>::new();
     for i in 0..=u16::MAX {
         let key = hasher.hash_one(i);
-        let replicas = keyspace.replicas(key).collect::<Vec<_>>();
-        let entry = replica_count.entry(replicas[0]).or_insert(0);
+        let replicas = keyspace.replicas(&key).collect::<Vec<_>>();
+        let entry = replica_count.entry(replicas[0].clone()).or_insert(0);
         *entry += 1;
     }
 
@@ -114,14 +114,50 @@ fn replica_set_fair_distribution() {
 }
 
 #[test]
-fn migration_plan() {
-    let init_nodes = vec!["node1", "node2", "node3", "node4", "node5"];
-    let keyspace = KeyspaceBuilder::new(init_nodes)
+fn add_node_migration_plan() {
+    // Populate the keyspace with nodes.
+    // Then add a new node and check migration plan.
+    const MAX_NODES: usize = 64;
+    let init_nodes = (0..MAX_NODES)
+        .map(|i| format!("node{}", i))
+        .collect::<Vec<_>>();
+
+    // Create a keyspace with the initial nodes and replication factor of 3.
+    let mut keyspace = KeyspaceBuilder::new(init_nodes)
         .with_replication_factor::<3>()
         .build()
         .expect("Failed to create keyspace");
 
-    for  key_range in keyspace.iter_node(&"node3") {
-        println!("Key Range: {:?}",  key_range);
-    }
+    // For a given key, obtain current replicas.
+    // Then add new node, check out new replicas, and make sure that migration plan
+    // is correct. The key is selected so that it it lands on the new node.
+    let key = 3705152965598471701u64;
+    let old_replicas = keyspace.replicas(&key).collect::<Vec<_>>();
+    assert_eq!(old_replicas, ["node52", "node22", "node23"]);
+
+    let new_node = format!("node{}", MAX_NODES);
+    let migrations = keyspace
+        .add_node(new_node.clone())
+        .expect("Failed to add node");
+
+    // Only one node is added, so we expect migration plan to contain only one
+    // target node (node into which data is pulled).
+    assert_eq!(migrations.keys().len(), 1);
+
+    let pull_intervals = migrations
+        .pull_intervals(&new_node)
+        .map(|interval| interval)
+        .collect::<Vec<_>>();
+
+    let new_replicas = keyspace.replicas(&key).collect::<Vec<_>>();
+    assert_eq!(new_replicas, ["node52", &new_node, "node22"]);
+
+    // Check that the migration plan is correct.
+    assert_eq!(pull_intervals.len(), 3016);
+    let interval = pull_intervals.first().unwrap();
+    assert_eq!(
+        interval.key_range(),
+        &KeyRange::new(19984723346456576, Some(20266198323167232))
+    );
+    assert_eq!(interval.nodes(), &vec!["node38", "node59", "node49"]);
 }

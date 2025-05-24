@@ -2,9 +2,11 @@ use {
     auto_impl::auto_impl,
     rapidhash::RapidBuildHasher,
     std::{
+        borrow::Borrow,
         collections::HashMap,
         hash::{BuildHasher, Hash},
         ops::{Deref, Index},
+        sync::Arc,
     },
 };
 
@@ -44,15 +46,102 @@ impl_node!(
 );
 
 /// Reference to a node.
-///
-/// Internally nodes might be stored in maps or other data structures.
-/// References to elements in such data structures are not valid if we cannot
-/// guarantee that data structure's lifetime is longer than the reference's
-/// lifetime. By wrapping the reference in a trait, we can bind the lifetime of
-/// node reference and the underlying data structure.
-pub trait NodeRef<'a, T: Node> {}
+#[derive(Debug, Hash)]
+pub struct NodeRef<N>(Arc<N>);
 
-impl<'a, T: Node> NodeRef<'a, T> for &'a T {}
+impl<N> From<N> for NodeRef<N> {
+    fn from(node: N) -> Self {
+        Self(Arc::new(node))
+    }
+}
+
+impl<N> Deref for NodeRef<N> {
+    type Target = Arc<N>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<N> AsRef<N> for NodeRef<N> {
+    fn as_ref(&self) -> &N {
+        self.0.as_ref()
+    }
+}
+
+impl<N> Borrow<N> for NodeRef<N> {
+    fn borrow(&self) -> &N {
+        self.0.as_ref()
+    }
+}
+
+// NodeRef<T> == NodeRef<T>
+impl<T: PartialEq> PartialEq for NodeRef<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T: PartialEq> Eq for NodeRef<T> {}
+
+// NodeRef<T> == T
+impl<T: PartialEq> PartialEq<T> for NodeRef<T> {
+    fn eq(&self, other: &T) -> bool {
+        self.0.as_ref() == other
+    }
+}
+
+// NodeRef<T> == Arc<T>
+impl<T: PartialEq> PartialEq<Arc<T>> for NodeRef<T> {
+    fn eq(&self, other: &Arc<T>) -> bool {
+        self.0 == *other
+    }
+}
+
+// NodeRef<T> == &T
+impl<T: PartialEq> PartialEq<&T> for NodeRef<T> {
+    fn eq(&self, other: &&T) -> bool {
+        self.0.as_ref() == *other
+    }
+}
+
+// NodeRef<String> == &str
+impl PartialEq<&str> for NodeRef<String> {
+    fn eq(&self, other: &&str) -> bool {
+        self.0.as_str() == *other
+    }
+}
+
+// Vec<NodeRef<T>> == Vec<&T>
+impl<T: PartialEq> PartialEq<Vec<&T>> for NodeRef<Vec<T>> {
+    fn eq(&self, other: &Vec<&T>) -> bool {
+        self.0.iter().zip(other.iter()).all(|(a, b)| a == *b)
+    }
+}
+
+// Vec<NodeRef<String>> == Vec<&str>
+impl PartialEq<Vec<&str>> for NodeRef<Vec<String>> {
+    fn eq(&self, other: &Vec<&str>) -> bool {
+        self.0.iter().zip(other.iter()).all(|(a, b)| a == *b)
+    }
+}
+
+impl<N: Node> Clone for NodeRef<N> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<N: Node> NodeRef<N> {
+    /// Creates a new node reference.
+    fn new(node: N) -> Self {
+        Self(Arc::new(node))
+    }
+
+    /// Returns the inner node.
+    pub fn inner(&self) -> &N {
+        self.0.as_ref()
+    }
+}
 
 /// Node hash.
 pub(crate) type NodeIdx = u64;
@@ -62,14 +151,15 @@ pub(crate) type NodeIdx = u64;
 /// The collection assigns each node an index (by hashing the node), which
 /// serves as a handle throughout the rest of the system. This way wherever we
 /// need to store the node, we store the index (which takes 8 bytes, `u64`).
+#[derive(Debug, Clone)]
 pub(crate) struct Nodes<N: Node, H: BuildHasher = RapidBuildHasher> {
-    nodes: HashMap<NodeIdx, N>,
+    nodes: HashMap<NodeIdx, NodeRef<N>>,
     build_hasher: H,
     version: u64,
 }
 
 impl<N: Node, H: BuildHasher> Deref for Nodes<N, H> {
-    type Target = HashMap<NodeIdx, N>;
+    type Target = HashMap<NodeIdx, NodeRef<N>>;
     fn deref(&self) -> &Self::Target {
         &self.nodes
     }
@@ -111,14 +201,14 @@ impl<N: Node, H: BuildHasher> Nodes<N, H> {
     /// Returns the index of the node in the collection.
     pub fn insert(&mut self, node: N) -> NodeIdx {
         let idx = self.build_hasher.hash_one(&node);
-        self.nodes.insert(idx, node);
+        self.nodes.insert(idx, NodeRef::new(node));
         self.version += 1;
 
         idx
     }
 
     /// Removes and returns (if existed) a node from the collection.
-    pub fn remove(&mut self, idx: NodeIdx) -> Option<N> {
+    pub fn remove(&mut self, idx: NodeIdx) -> Option<NodeRef<N>> {
         self.nodes.remove(&idx).and_then(|node| {
             self.version += 1;
             Some(node)
@@ -132,8 +222,8 @@ impl<N: Node, H: BuildHasher> Nodes<N, H> {
     }
 
     /// Returns a reference to the node with given index.
-    pub fn get(&self, idx: NodeIdx) -> Option<&N> {
-        self.nodes.get(&idx)
+    pub fn get(&self, idx: NodeIdx) -> Option<NodeRef<N>> {
+        self.nodes.get(&idx).and_then(|node| Some(node.clone()))
     }
 
     /// Returns the version of the collection.
@@ -141,6 +231,10 @@ impl<N: Node, H: BuildHasher> Nodes<N, H> {
         self.version
     }
 
+    /// Exposes the underlying hasher.
+    pub fn build_hasher(&self) -> &H {
+        &self.build_hasher
+    }
 }
 
 #[cfg(test)]
