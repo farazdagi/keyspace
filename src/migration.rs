@@ -17,6 +17,9 @@ pub struct MigrationPlan<'a, N: Node, H: BuildHasher> {
 
     /// Reference to the nodes of the keyspace.
     nodes: &'a Nodes<N, H>,
+
+    /// Version of keyspace.
+    version: u64,
 }
 
 impl<'a, N, H> Deref for MigrationPlan<'a, N, H>
@@ -50,6 +53,7 @@ where
 {
     /// Creates a new migration plan.
     pub(crate) fn new<const RF: usize>(
+        version: u64,
         nodes: &'a Nodes<N, H>,
         old_shards: &Shards<RF>,
         new_shards: &Shards<RF>,
@@ -65,6 +69,7 @@ where
             if old_replica_set == new_replica_set {
                 continue;
             }
+            assert_eq!(old_shard.key_range(), new_shard.key_range());
 
             let key_range = old_shard.key_range();
             for target_node_idx in new_replica_set.iter().copied() {
@@ -85,12 +90,16 @@ where
             }
         }
 
-        Ok(Self { intervals, nodes })
+        Ok(Self {
+            version,
+            intervals,
+            nodes,
+        })
     }
 
     /// Returns the version of the migration plan.
     pub fn version(&self) -> u64 {
-        self.nodes.version()
+        self.version
     }
 
     /// Intervals that need to be pulled to the given node.

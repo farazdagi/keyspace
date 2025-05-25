@@ -155,7 +155,6 @@ pub(crate) type NodeIdx = u64;
 pub(crate) struct Nodes<N: Node, H: BuildHasher = RapidBuildHasher> {
     nodes: HashMap<NodeIdx, NodeRef<N>>,
     build_hasher: H,
-    version: u64,
 }
 
 impl<N: Node, H: BuildHasher> Deref for Nodes<N, H> {
@@ -192,7 +191,6 @@ impl<N: Node, H: BuildHasher> Nodes<N, H> {
         Self {
             nodes: HashMap::new(),
             build_hasher,
-            version: 0,
         }
     }
 
@@ -202,7 +200,6 @@ impl<N: Node, H: BuildHasher> Nodes<N, H> {
     pub fn insert(&mut self, node: N) -> NodeIdx {
         let idx = self.build_hasher.hash_one(&node);
         self.nodes.insert(idx, NodeRef::new(node));
-        self.version += 1;
 
         idx
     }
@@ -210,7 +207,6 @@ impl<N: Node, H: BuildHasher> Nodes<N, H> {
     /// Removes and returns (if existed) a node from the collection.
     pub fn remove(&mut self, idx: NodeIdx) -> Option<NodeRef<N>> {
         self.nodes.remove(&idx).and_then(|node| {
-            self.version += 1;
             Some(node)
         })
     }
@@ -226,10 +222,6 @@ impl<N: Node, H: BuildHasher> Nodes<N, H> {
         self.nodes.get(&idx).and_then(|node| Some(node.clone()))
     }
 
-    /// Returns the version of the collection.
-    pub fn version(&self) -> u64 {
-        self.version
-    }
 
     /// Exposes the underlying hasher.
     pub fn build_hasher(&self) -> &H {

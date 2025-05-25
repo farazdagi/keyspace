@@ -92,7 +92,10 @@ where
     }
 
     /// Remove a node from the keyspace.
-    pub fn remove_node(&mut self, node: &N) -> KeyspaceResult<MigrationPlan<N, H>> {
+    pub fn remove_node<'a, 'b: 'a>(
+        &'b mut self,
+        node: &N,
+    ) -> KeyspaceResult<MigrationPlan<'a, N, H>> {
         self.nodes.remove(self.nodes.idx(node));
         self.migration_plan()
     }
@@ -166,7 +169,7 @@ where
         self.shards = Shards::new(&self.nodes, self.replication_strategy.clone())?;
 
         // Calculate migration plan from updated shards.
-        MigrationPlan::new(&self.nodes, &old_shards, &self.shards).and_then(|plan| {
+        MigrationPlan::new(self.version, &self.nodes, &old_shards, &self.shards).and_then(|plan| {
             self.version += 1;
             Ok(plan)
         })
