@@ -130,7 +130,7 @@ fn add_node_migration_plan() {
 
     // For a given key, obtain current replicas.
     // Then add new node, check out new replicas, and make sure that migration plan
-    // is correct. The key is selected so that it it lands on the new node.
+    // is correct. The key is selected so that it lands on the new node.
     let key = 3705152965598471701u64;
     let old_replicas = keyspace.replicas(&key).collect::<Vec<_>>();
     assert_eq!(old_replicas, ["node52", "node22", "node23"]);
@@ -160,4 +160,60 @@ fn add_node_migration_plan() {
         &KeyRange::new(19984723346456576, Some(20266198323167232))
     );
     assert_eq!(interval.nodes(), &vec!["node38", "node59", "node49"]);
+}
+
+#[test]
+fn remove_node_migration_plan() {
+    // Populate the keyspace with nodes.
+    // Then remove a node and check migration plan.
+    const MAX_NODES: usize = 64;
+    let init_nodes = (0..MAX_NODES)
+        .map(|i| format!("node{}", i))
+        .collect::<Vec<_>>();
+
+    // Create a keyspace with the initial nodes and replication factor of 3.
+    let mut keyspace = KeyspaceBuilder::new(init_nodes)
+        .with_replication_factor::<3>()
+        .build()
+        .expect("Failed to create keyspace");
+
+    // For a given key, obtain current replicas.
+    // Then remove a node, check out new replicas, and make sure that migration plan
+    // is correct. The key is selected so that it was on the removed node.
+    let key = 3705152965598471701u64;
+    let old_replicas = keyspace.replicas(&key).collect::<Vec<_>>();
+    assert_eq!(old_replicas, ["node52", "node22", "node23"]);
+
+    let removed_node = "node22".to_string();
+    let migrations = keyspace
+        .remove_node(&removed_node)
+        .expect("Failed to remove node");
+
+    // Node was removed, it was part of multiple shards, so at least those shards
+    // are updated.
+    assert_eq!(migrations.keys().len(), 63);
+
+    let pull_intervals = migrations
+        .pull_intervals(&removed_node)
+        .map(|interval| interval)
+        .collect::<Vec<_>>();
+    // Node is removed, so there should be no pull intervals for it.
+    assert_eq!(pull_intervals.len(), 0);
+
+    let new_replicas = keyspace.replicas(&key).collect::<Vec<_>>();
+    assert_eq!(new_replicas, ["node52", "node23", "node35"]);
+
+    let pull_intervals = migrations
+        .pull_intervals(&"node35".to_string())
+        .map(|interval| interval)
+        .collect::<Vec<_>>();
+
+    // Check that the migration plan is correct.
+    assert_eq!(pull_intervals.len(), 44);
+    let interval = pull_intervals.first().unwrap();
+    assert_eq!(
+        interval.key_range(),
+        &KeyRange::new(451767337620602880, Some(452048812597313536))
+    );
+    assert_eq!(interval.nodes(), &vec!["node14", "node52"]);
 }

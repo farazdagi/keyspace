@@ -6,11 +6,11 @@ use {
         Node,
         ReplicationStrategy,
         interval::KeyRange,
-        node::{NodeIdx, Nodes},
+        node::{NodeId, Nodes},
         replication::ReplicaSet,
     },
     hrw_hash::HrwNodes,
-    std::{hash::BuildHasher, ops::Deref},
+    std::{ ops::Deref},
 };
 
 /// Shard index.
@@ -38,22 +38,17 @@ impl ShardIdx {
 #[derive(Debug)]
 pub(crate) struct Shard<'a, const RF: usize> {
     idx: ShardIdx,
-    replica_set: &'a ReplicaSet<NodeIdx, RF>,
+    replica_set: &'a ReplicaSet<NodeId, RF>,
 }
 
 impl<'a, const RF: usize> Shard<'a, RF> {
     /// Creates a new shard with the given index and replica set.
-    pub fn new(idx: ShardIdx, replica_set: &'a ReplicaSet<NodeIdx, RF>) -> Self {
+    pub fn new(idx: ShardIdx, replica_set: &'a ReplicaSet<NodeId, RF>) -> Self {
         Self { idx, replica_set }
     }
 
-    /// Returns the index of the shard.
-    pub fn idx(&self) -> ShardIdx {
-        self.idx
-    }
-
     /// Returns the replica set of the shard.
-    pub fn replica_set(&self) -> &ReplicaSet<NodeIdx, RF> {
+    pub fn replica_set(&self) -> &ReplicaSet<NodeId, RF> {
         self.replica_set
     }
 
@@ -74,23 +69,22 @@ impl<'a, const RF: usize> Shard<'a, RF> {
 /// Each shard is a replica set of nodes that are responsible for the data in
 /// that keyspace portion.
 #[derive(Clone)]
-pub(crate) struct Shards<const RF: usize>(Vec<ReplicaSet<NodeIdx, RF>>);
+pub(crate) struct Shards<const RF: usize>(Vec<ReplicaSet<NodeId, RF>>);
 
 impl<const RF: usize> Shards<RF> {
     /// Creates a new keyspace with each shard controlled by a replica set of
     /// nodes.
-    pub fn new<N, R, H>(nodes: &Nodes<N, H>, replication_strategy: R) -> KeyspaceResult<Self>
+    pub fn new<N, R>(nodes: &Nodes<N>, replication_strategy: R) -> KeyspaceResult<Self>
     where
         N: Node,
         R: ReplicationStrategy,
-        H: BuildHasher,
     {
         if nodes.len() < RF {
             return Err(KeyspaceError::NotEnoughNodes(RF));
         }
 
         // Highest random weight (HRW) algorithm is used to select the nodes.
-        let hrw = HrwNodes::new(nodes.keys().copied());
+        let hrw = HrwNodes::new(nodes.keys());
 
         let mut shards = Vec::with_capacity(ShardIdx::MAX.0 as usize + 1);
         for idx in 0..=ShardIdx::MAX.0 {
@@ -126,7 +120,7 @@ impl<const RF: usize> Shards<RF> {
     }
 
     /// Returns replica set for the shard at the given index.
-    pub fn replica_set(&self, idx: ShardIdx) -> &ReplicaSet<NodeIdx, RF> {
+    pub fn replica_set(&self, idx: ShardIdx) -> &ReplicaSet<NodeId, RF> {
         &self.0[idx.0 as usize]
     }
 }

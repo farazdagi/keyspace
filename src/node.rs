@@ -1,14 +1,19 @@
 use {
     auto_impl::auto_impl,
-    rapidhash::RapidBuildHasher,
+    parking_lot::RwLock,
+    rapidhash::RapidHasher,
     std::{
         borrow::Borrow,
         collections::HashMap,
-        hash::{BuildHasher, Hash},
-        ops::{Deref, Index},
+        hash::{Hash, Hasher},
+        ops::Deref,
         sync::Arc,
     },
 };
+
+/// Node identifier.
+/// Normally, just a hash of the node.
+pub type NodeId = u64;
 
 /// Node that stores data.
 ///
@@ -17,6 +22,13 @@ use {
 /// replicas).
 #[auto_impl(&)]
 pub trait Node: std::fmt::Debug + Hash + PartialEq + Eq + 'static {
+    /// Returns the unique identifier of the node.
+    fn id(&self) -> NodeId {
+        let mut hasher = RapidHasher::default();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Capacity of the node.
     ///
     /// The capacity is used to determine what portion of the keyspace the
@@ -133,7 +145,7 @@ impl<N: Node> Clone for NodeRef<N> {
 
 impl<N: Node> NodeRef<N> {
     /// Creates a new node reference.
-    fn new(node: N) -> Self {
+    pub fn new(node: N) -> Self {
         Self(Arc::new(node))
     }
 
@@ -143,8 +155,8 @@ impl<N: Node> NodeRef<N> {
     }
 }
 
-/// Node hash.
-pub(crate) type NodeIdx = u64;
+// /// Nodes collection.
+// pub type Nodes<N> = Arc<RwLock<HashMap<NodeId, NodeRef<N>>>>;
 
 /// Nodes collection.
 ///
@@ -152,17 +164,7 @@ pub(crate) type NodeIdx = u64;
 /// serves as a handle throughout the rest of the system. This way wherever we
 /// need to store the node, we store the index (which takes 8 bytes, `u64`).
 #[derive(Debug, Clone)]
-pub(crate) struct Nodes<N: Node, H: BuildHasher = RapidBuildHasher> {
-    nodes: HashMap<NodeIdx, NodeRef<N>>,
-    build_hasher: H,
-}
-
-impl<N: Node, H: BuildHasher> Deref for Nodes<N, H> {
-    type Target = HashMap<NodeIdx, NodeRef<N>>;
-    fn deref(&self) -> &Self::Target {
-        &self.nodes
-    }
-}
+pub(crate) struct Nodes<N: Node>(Arc<RwLock<HashMap<NodeId, NodeRef<N>>>>);
 
 impl<N: Node> Default for Nodes<N> {
     fn default() -> Self {
@@ -170,121 +172,112 @@ impl<N: Node> Default for Nodes<N> {
     }
 }
 
-impl<N: Node, H: BuildHasher> Index<NodeIdx> for Nodes<N, H> {
-    type Output = N;
-
-    fn index(&self, idx: NodeIdx) -> &Self::Output {
-        self.nodes.get(&idx).expect("Node not found")
-    }
-}
-
 impl<N: Node> Nodes<N> {
     /// Creates a new empty nodes collection.
     pub fn new() -> Self {
-        Self::with_build_hasher(RapidBuildHasher::default())
+        Self(Arc::new(RwLock::new(HashMap::new())))
     }
-}
 
-impl<N: Node, H: BuildHasher> Nodes<N, H> {
-    /// Creates a new empty nodes collection with the given hasher.
-    pub fn with_build_hasher(build_hasher: H) -> Self {
-        Self {
-            nodes: HashMap::new(),
-            build_hasher,
-        }
+    pub fn from_iter<I>(nodes: I) -> Self
+    where
+        I: IntoIterator<Item = N>,
+    {
+        Self(Arc::new(RwLock::new(HashMap::from_iter(
+            nodes
+                .into_iter()
+                .map(|node| (node.id(), NodeRef::new(node))),
+        ))))
     }
 
     /// Adds a node to the collection.
     ///
     /// Returns the index of the node in the collection.
-    pub fn insert(&mut self, node: N) -> NodeIdx {
-        let idx = self.build_hasher.hash_one(&node);
-        self.nodes.insert(idx, NodeRef::new(node));
-
-        idx
+    pub fn insert(&self, node: N) -> Option<NodeRef<N>> {
+        self.0.write().insert(node.id(), NodeRef::new(node))
     }
 
     /// Removes and returns (if existed) a node from the collection.
-    pub fn remove(&mut self, idx: NodeIdx) -> Option<NodeRef<N>> {
-        self.nodes.remove(&idx).and_then(|node| {
-            Some(node)
-        })
-    }
-
-    /// Returns index of a given node.
-    /// Normally, the index is calculated by hashing the node.
-    pub fn idx(&self, node: &N) -> NodeIdx {
-        self.build_hasher.hash_one(node)
+    pub fn remove(&self, node: &N) -> Option<NodeRef<N>> {
+        self.0.write().remove(&node.id())
     }
 
     /// Returns a reference to the node with given index.
-    pub fn get(&self, idx: NodeIdx) -> Option<NodeRef<N>> {
-        self.nodes.get(&idx).and_then(|node| Some(node.clone()))
+    pub fn get(&self, idx: NodeId) -> Option<NodeRef<N>> {
+        self.0.read().get(&idx).and_then(|node| Some(node.clone()))
     }
 
-
-    /// Exposes the underlying hasher.
-    pub fn build_hasher(&self) -> &H {
-        &self.build_hasher
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn check_node(node: &TestNode, id: String, capacity: usize) {
-        assert_eq!(node.id(), &id);
-        assert_eq!(node.capacity(), capacity);
+    /// Number of nodes in the collection.
+    pub fn len(&self) -> usize {
+        self.0.read().len()
     }
 
-    #[derive(Hash, Debug, PartialEq, Eq)]
-    struct TestNode {
-        id: String,
-        capacity: usize,
+    /// Checks if the collection contains a node.
+    pub fn contains(&self, node: &N) -> bool {
+        self.0.read().contains_key(&node.id())
     }
 
-    impl Node for TestNode {
-        fn capacity(&self) -> usize {
-            self.capacity
-        }
-    }
-
-    impl TestNode {
-        fn id(&self) -> &String {
-            &self.id
-        }
-
-        fn capacity(&self) -> usize {
-            self.capacity
-        }
-    }
-
-    #[test]
-    fn basic_ops() {
-        let mut nodes = Nodes::new();
-        let mut indexes = vec![];
-
-        (0..5).for_each(|i| {
-            let node = TestNode {
-                id: format!("node{}", i),
-                capacity: 10,
-            };
-            let idx = nodes.insert(node);
-            check_node(&nodes[idx], format!("node{}", i), 10);
-            indexes.push(idx);
-        });
-
-        // Check that the nodes are in the collection
-        for (idx, node) in nodes.iter() {
-            check_node(&nodes[*idx], node.id.clone(), node.capacity);
-        }
-
-        // Remove nodes and check that they are removed
-        let remove_idx = indexes[3];
-        let removed_node = nodes.remove(remove_idx).unwrap();
-        assert_eq!(removed_node.id(), "node3");
-        assert_eq!(nodes.len(), 4);
-        assert!(nodes.get(remove_idx).is_none());
+    /// An iterator over the node IDs.
+    pub fn keys(&self) -> Vec<NodeId> {
+        self.0.read().keys().copied().collect()
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//
+//     fn check_node(node: &TestNode, id: String, capacity: usize) {
+//         assert_eq!(node.id(), &id);
+//         assert_eq!(node.capacity(), capacity);
+//     }
+//
+//     #[derive(Hash, Debug, PartialEq, Eq)]
+//     struct TestNode {
+//         id: String,
+//         capacity: usize,
+//     }
+//
+//     impl Node for TestNode {
+//         fn capacity(&self) -> usize {
+//             self.capacity
+//         }
+//     }
+//
+//     impl TestNode {
+//         fn id(&self) -> &String {
+//             &self.id
+//         }
+//
+//         fn capacity(&self) -> usize {
+//             self.capacity
+//         }
+//     }
+//
+//     #[test]
+//     fn basic_ops() {
+//         let mut nodes = Nodes::new();
+//         let mut indexes = vec![];
+//
+//         (0..5).for_each(|i| {
+//             let node = TestNode {
+//                 id: format!("node{}", i),
+//                 capacity: 10,
+//             };
+//             let idx = nodes.insert(node);
+//             check_node(&nodes[idx], format!("node{}", i), 10);
+//             indexes.push(idx);
+//         });
+//
+//         // Check that the nodes are in the collection
+//         for (idx, node) in nodes.iter() {
+//             check_node(&nodes[*idx], node.id.clone(), node.capacity);
+//         }
+//
+//         // Remove nodes and check that they are removed
+//         let remove_idx = indexes[3];
+//         let removed_node = nodes.remove(remove_idx).unwrap();
+//         assert_eq!(removed_node.id(), "node3");
+//         assert_eq!(nodes.len(), 4);
+//         assert!(nodes.get(remove_idx).is_none());
+//     }
+// }

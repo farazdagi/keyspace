@@ -4,40 +4,38 @@ use {
         KeyspaceResult,
         NodeRef,
         interval::Interval,
-        node::{Node, NodeIdx, Nodes},
+        node::{Node, NodeId, Nodes},
         sharding::Shards,
     },
-    std::{collections::HashMap, fmt, hash::BuildHasher, ops::Deref},
+    std::{collections::HashMap, fmt,  ops::Deref, sync::Arc},
 };
 
 /// Data migration plan.
-pub struct MigrationPlan<'a, N: Node, H: BuildHasher> {
+pub struct MigrationPlan<N: Node> {
     /// Mapping of node id to the intervals that need to be migrated to it.
-    intervals: HashMap<NodeIdx, Vec<Interval<Vec<NodeIdx>>>>,
+    intervals: HashMap<NodeId, Vec<Interval<Vec<NodeId>>>>,
 
     /// Reference to the nodes of the keyspace.
-    nodes: &'a Nodes<N, H>,
+    nodes: Arc<Nodes<N>>,
 
     /// Version of keyspace.
     version: u64,
 }
 
-impl<'a, N, H> Deref for MigrationPlan<'a, N, H>
+impl<N> Deref for MigrationPlan<N>
 where
     N: Node,
-    H: BuildHasher,
 {
-    type Target = HashMap<NodeIdx, Vec<Interval<Vec<NodeIdx>>>>;
+    type Target = HashMap<NodeId, Vec<Interval<Vec<NodeId>>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.intervals
     }
 }
 
-impl<'a, N, H> fmt::Debug for MigrationPlan<'a, N, H>
+impl<N> fmt::Debug for MigrationPlan<N>
 where
     N: Node,
-    H: BuildHasher,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MigrationPlan")
@@ -46,15 +44,14 @@ where
     }
 }
 
-impl<'a, N, H> MigrationPlan<'a, N, H>
+impl<N> MigrationPlan<N>
 where
     N: Node,
-    H: BuildHasher,
 {
     /// Creates a new migration plan.
     pub(crate) fn new<const RF: usize>(
         version: u64,
-        nodes: &'a Nodes<N, H>,
+        nodes: Arc<Nodes<N>>,
         old_shards: &Shards<RF>,
         new_shards: &Shards<RF>,
     ) -> KeyspaceResult<Self> {
@@ -105,7 +102,7 @@ where
     /// Intervals that need to be pulled to the given node.
     pub fn pull_intervals(&self, node: &N) -> impl Iterator<Item = Interval<Vec<NodeRef<N>>>> {
         self.intervals
-            .get(&self.nodes.idx(node))
+            .get(&node.id())
             .into_iter()
             .flat_map(|intervals| {
                 intervals.iter().map(|interval| {
