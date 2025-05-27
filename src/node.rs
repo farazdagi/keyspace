@@ -1,19 +1,9 @@
 use {
     auto_impl::auto_impl,
+    hrw_hash::HrwNode,
     parking_lot::RwLock,
-    rapidhash::RapidHasher,
-    std::{
-        borrow::Borrow,
-        collections::HashMap,
-        hash::{Hash, Hasher},
-        ops::Deref,
-        sync::Arc,
-    },
+    std::{borrow::Borrow, collections::HashMap, fmt, hash::Hash, ops::Deref, sync::Arc},
 };
-
-/// Node identifier.
-/// Normally, just a hash of the node.
-pub type NodeId = u64;
 
 /// Node that stores data.
 ///
@@ -21,13 +11,11 @@ pub type NodeId = u64;
 /// Keys which fall into such an interval are routed to the node (and its
 /// replicas).
 #[auto_impl(&)]
-pub trait Node: std::fmt::Debug + Hash + PartialEq + Eq + 'static {
+pub trait Node: fmt::Debug + Hash + PartialEq + Eq {
+    type Id: fmt::Debug + Default + Hash + Clone + PartialEq + Eq;
+
     /// Returns the unique identifier of the node.
-    fn id(&self) -> NodeId {
-        let mut hasher = RapidHasher::default();
-        self.hash(&mut hasher);
-        hasher.finish()
-    }
+    fn id(&self) -> Self::Id;
 
     /// Capacity of the node.
     ///
@@ -45,51 +33,83 @@ pub trait Node: std::fmt::Debug + Hash + PartialEq + Eq + 'static {
     }
 }
 
-macro_rules! impl_node {
-    ($($t:ty),*) => {
-        $(
-            impl Node for $t {}
-        )*
-    };
+impl Node for String {
+    type Id = String;
+
+    fn id(&self) -> String {
+        self.clone()
+    }
 }
 
-impl_node!(
-    u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, String, str
-);
+impl Node for str {
+    type Id = String;
+
+    fn id(&self) -> String {
+        self.to_string()
+    }
+}
 
 /// Reference to a node.
 #[derive(Debug, Hash)]
-pub struct NodeRef<N>(Arc<N>);
+pub struct NodeRef<N>(Option<Arc<N>>);
+
+impl<N: Node> HrwNode for NodeRef<N> {
+    fn capacity(&self) -> usize {
+        match self.0.as_ref() {
+            Some(node) => node.capacity(),
+            None => 0,
+        }
+    }
+}
+
+impl<N> Default for NodeRef<N> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl<N: Node> Clone for NodeRef<N> {
+    fn clone(&self) -> Self {
+        match self.0.as_ref() {
+            Some(node) => NodeRef(Some(Arc::clone(node))),
+            None => NodeRef(None),
+        }
+    }
+}
 
 impl<N> From<N> for NodeRef<N> {
     fn from(node: N) -> Self {
-        Self(Arc::new(node))
+        Self(Some(Arc::new(node)))
     }
 }
 
 impl<N> Deref for NodeRef<N> {
     type Target = Arc<N>;
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.0.as_ref().expect("Cannot deref an empty NodeRef")
     }
 }
 
 impl<N> AsRef<N> for NodeRef<N> {
     fn as_ref(&self) -> &N {
-        self.0.as_ref()
+        self.0.as_ref().expect("Cannot reference an empty NodeRef")
     }
 }
 
 impl<N> Borrow<N> for NodeRef<N> {
     fn borrow(&self) -> &N {
-        self.0.as_ref()
+        self.0.as_ref().expect("Cannot borrow from empty NodeRef")
     }
 }
 
 // NodeRef<T> == NodeRef<T>
 impl<T: PartialEq> PartialEq for NodeRef<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        match (self.0.as_ref(), other.0.as_ref()) {
+            (Some(a), Some(b)) => a.as_ref() == b.as_ref(),
+            (None, None) => true,
+            _ => false,
+        }
     }
 }
 
@@ -98,65 +118,79 @@ impl<T: PartialEq> Eq for NodeRef<T> {}
 // NodeRef<T> == T
 impl<T: PartialEq> PartialEq<T> for NodeRef<T> {
     fn eq(&self, other: &T) -> bool {
-        self.0.as_ref() == other
+        match self.0.as_ref() {
+            Some(node) => node.as_ref() == other,
+            None => false,
+        }
     }
 }
 
 // NodeRef<T> == Arc<T>
 impl<T: PartialEq> PartialEq<Arc<T>> for NodeRef<T> {
     fn eq(&self, other: &Arc<T>) -> bool {
-        self.0 == *other
+        match self.0.as_ref() {
+            Some(node) => node.as_ref() == other.as_ref(),
+            None => false,
+        }
     }
 }
 
 // NodeRef<T> == &T
 impl<T: PartialEq> PartialEq<&T> for NodeRef<T> {
     fn eq(&self, other: &&T) -> bool {
-        self.0.as_ref() == *other
+        match self.0.as_ref() {
+            Some(node) => node.as_ref() == *other,
+            None => false,
+        }
     }
 }
 
 // NodeRef<String> == &str
 impl PartialEq<&str> for NodeRef<String> {
     fn eq(&self, other: &&str) -> bool {
-        self.0.as_str() == *other
+        match self.0.as_ref() {
+            Some(node) => node.as_str() == *other,
+            None => false,
+        }
     }
 }
 
 // Vec<NodeRef<T>> == Vec<&T>
 impl<T: PartialEq> PartialEq<Vec<&T>> for NodeRef<Vec<T>> {
     fn eq(&self, other: &Vec<&T>) -> bool {
-        self.0.iter().zip(other.iter()).all(|(a, b)| a == *b)
+        match self.0.as_ref() {
+            Some(nodes) => nodes.iter().zip(other.iter()).all(|(a, b)| a == *b),
+            None => other.is_empty(),
+        }
     }
 }
 
 // Vec<NodeRef<String>> == Vec<&str>
 impl PartialEq<Vec<&str>> for NodeRef<Vec<String>> {
     fn eq(&self, other: &Vec<&str>) -> bool {
-        self.0.iter().zip(other.iter()).all(|(a, b)| a == *b)
-    }
-}
-
-impl<N: Node> Clone for NodeRef<N> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
+        match self.0.as_ref() {
+            Some(nodes) => nodes
+                .iter()
+                .zip(other.iter())
+                .all(|(a, b)| a.as_str() == *b),
+            None => other.is_empty(),
+        }
     }
 }
 
 impl<N: Node> NodeRef<N> {
     /// Creates a new node reference.
     pub fn new(node: N) -> Self {
-        Self(Arc::new(node))
+        Self(Some(Arc::new(node)))
     }
 
     /// Returns the inner node.
     pub fn inner(&self) -> &N {
-        self.0.as_ref()
+        self.0
+            .as_ref()
+            .expect("Cannot get inner node from an empty NodeRef")
     }
 }
-
-// /// Nodes collection.
-// pub type Nodes<N> = Arc<RwLock<HashMap<NodeId, NodeRef<N>>>>;
 
 /// Nodes collection.
 ///
@@ -164,7 +198,7 @@ impl<N: Node> NodeRef<N> {
 /// serves as a handle throughout the rest of the system. This way wherever we
 /// need to store the node, we store the index (which takes 8 bytes, `u64`).
 #[derive(Debug, Clone)]
-pub(crate) struct Nodes<N: Node>(Arc<RwLock<HashMap<NodeId, NodeRef<N>>>>);
+pub(crate) struct Nodes<N: Node>(Arc<RwLock<HashMap<N::Id, NodeRef<N>>>>);
 
 impl<N: Node> Default for Nodes<N> {
     fn default() -> Self {
@@ -178,6 +212,7 @@ impl<N: Node> Nodes<N> {
         Self(Arc::new(RwLock::new(HashMap::new())))
     }
 
+    /// Creates a new nodes collection from an iterator of nodes.
     pub fn from_iter<I>(nodes: I) -> Self
     where
         I: IntoIterator<Item = N>,
@@ -191,19 +226,37 @@ impl<N: Node> Nodes<N> {
 
     /// Adds a node to the collection.
     ///
-    /// Returns the index of the node in the collection.
+    /// If the node with given ID was already present, the value is updated, and
+    /// the old value is returned.
     pub fn insert(&self, node: N) -> Option<NodeRef<N>> {
         self.0.write().insert(node.id(), NodeRef::new(node))
     }
 
     /// Removes and returns (if existed) a node from the collection.
-    pub fn remove(&self, node: &N) -> Option<NodeRef<N>> {
-        self.0.write().remove(&node.id())
+    pub fn remove(&self, id: &N::Id) -> Option<NodeRef<N>> {
+        self.0.write().remove(id)
+    }
+
+    /// Adds or removes nodes in batch.
+    pub fn batch_update<'a, I: IntoIterator<Item = N>, IR: IntoIterator<Item = &'a N::Id>>(
+        &self,
+        new_nodes: I,
+        removed_nodes: IR,
+    ) where
+        N: 'a,
+    {
+        let mut write_lock = self.0.write();
+        for node in new_nodes {
+            write_lock.insert(node.id(), NodeRef::new(node));
+        }
+        for node_id in removed_nodes {
+            write_lock.remove(node_id);
+        }
     }
 
     /// Returns a reference to the node with given index.
-    pub fn get(&self, idx: NodeId) -> Option<NodeRef<N>> {
-        self.0.read().get(&idx).and_then(|node| Some(node.clone()))
+    pub fn get(&self, id: N::Id) -> Option<NodeRef<N>> {
+        self.0.read().get(&id).and_then(|node| Some(node.clone()))
     }
 
     /// Number of nodes in the collection.
@@ -212,72 +265,91 @@ impl<N: Node> Nodes<N> {
     }
 
     /// Checks if the collection contains a node.
-    pub fn contains(&self, node: &N) -> bool {
-        self.0.read().contains_key(&node.id())
+    pub fn contains(&self, id: &N::Id) -> bool {
+        self.0.read().contains_key(id)
     }
 
-    /// An iterator over the node IDs.
-    pub fn keys(&self) -> Vec<NodeId> {
-        self.0.read().keys().copied().collect()
+    /// Node IDs in the collection.
+    pub fn keys(&self) -> Vec<N::Id> {
+        self.0.read().keys().map(|key| key.clone()).collect()
+    }
+
+    /// Node references in the collection.
+    pub fn values(&self) -> Vec<NodeRef<N>> {
+        self.0.read().values().cloned().collect()
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//
-//     fn check_node(node: &TestNode, id: String, capacity: usize) {
-//         assert_eq!(node.id(), &id);
-//         assert_eq!(node.capacity(), capacity);
-//     }
-//
-//     #[derive(Hash, Debug, PartialEq, Eq)]
-//     struct TestNode {
-//         id: String,
-//         capacity: usize,
-//     }
-//
-//     impl Node for TestNode {
-//         fn capacity(&self) -> usize {
-//             self.capacity
-//         }
-//     }
-//
-//     impl TestNode {
-//         fn id(&self) -> &String {
-//             &self.id
-//         }
-//
-//         fn capacity(&self) -> usize {
-//             self.capacity
-//         }
-//     }
-//
-//     #[test]
-//     fn basic_ops() {
-//         let mut nodes = Nodes::new();
-//         let mut indexes = vec![];
-//
-//         (0..5).for_each(|i| {
-//             let node = TestNode {
-//                 id: format!("node{}", i),
-//                 capacity: 10,
-//             };
-//             let idx = nodes.insert(node);
-//             check_node(&nodes[idx], format!("node{}", i), 10);
-//             indexes.push(idx);
-//         });
-//
-//         // Check that the nodes are in the collection
-//         for (idx, node) in nodes.iter() {
-//             check_node(&nodes[*idx], node.id.clone(), node.capacity);
-//         }
-//
-//         // Remove nodes and check that they are removed
-//         let remove_idx = indexes[3];
-//         let removed_node = nodes.remove(remove_idx).unwrap();
-//         assert_eq!(removed_node.id(), "node3");
-//         assert_eq!(nodes.len(), 4);
-//         assert!(nodes.get(remove_idx).is_none());
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use {
+        super::{Node as KeyspaceNode, *},
+        std::{
+            net::{IpAddr, SocketAddr},
+            str::FromStr,
+        },
+    };
+
+    #[derive(Debug, Hash, PartialEq, Eq, Clone)]
+    struct Node {
+        id: String,
+        addr: SocketAddr,
+        capacity: usize,
+    }
+
+    impl Node {
+        fn new(id: &str, ip: &str, port: u16, capacity: usize) -> Self {
+            let addr = SocketAddr::new(IpAddr::from_str(&ip).unwrap(), port);
+            Self {
+                id: id.to_string(),
+                addr,
+                capacity,
+            }
+        }
+    }
+
+    impl ToString for Node {
+        fn to_string(&self) -> String {
+            format!("{}|{}", self.addr, self.id)
+        }
+    }
+
+    impl KeyspaceNode for Node {
+        type Id = String;
+
+        fn id(&self) -> Self::Id {
+            self.id.clone()
+        }
+
+        fn capacity(&self) -> usize {
+            self.capacity
+        }
+    }
+
+    #[test]
+    fn basic_ops() {
+        let nodes = Nodes::new();
+
+        // Insert nodes
+        let node1 = Node::new("node1", "127.0.0.1", 2048, 10);
+        let res = nodes.insert(node1.clone());
+        assert!(res.is_none(), "Node should be inserted");
+        let res = nodes.insert(Node::new("node2", "127.0.0.1", 2049, 10));
+        assert!(res.is_none(), "Node should be inserted");
+        let res = nodes.insert(Node::new("node3", "127.0.0.1", 2050, 10));
+        assert!(res.is_none(), "Node should be inserted");
+
+        assert_eq!(nodes.len(), 3, "There should be 3 nodes");
+        assert!(nodes.keys().contains(&"node1".to_string()));
+        assert!(nodes.keys().contains(&"node2".to_string()));
+        assert!(nodes.keys().contains(&"node3".to_string()));
+
+        // Update existing node
+        let node1a = Node::new("node1", "127.0.0.2", 2048, 10);
+        let res = nodes.insert(node1a.clone());
+        assert_eq!(res.unwrap(), node1);
+
+        // Check if the node exists
+        assert!(nodes.contains(&node1a.id()));
+    }
+}
