@@ -6,11 +6,11 @@ use {
         Node,
         ReplicationStrategy,
         interval::KeyRange,
-        node::{NodeId, Nodes},
+        node::Nodes,
         replication::ReplicaSet,
     },
     hrw_hash::HrwNodes,
-    std::{ ops::Deref},
+    std::ops::Deref,
 };
 
 /// Shard index.
@@ -36,19 +36,19 @@ impl ShardIdx {
 
 /// Shard is a portion of the keyspace controlled by a set of nodes.
 #[derive(Debug)]
-pub(crate) struct Shard<'a, const RF: usize> {
+pub(crate) struct Shard<'a, N: Node, const RF: usize> {
     idx: ShardIdx,
-    replica_set: &'a ReplicaSet<NodeId, RF>,
+    replica_set: &'a ReplicaSet<N, RF>,
 }
 
-impl<'a, const RF: usize> Shard<'a, RF> {
+impl<'a, N: Node, const RF: usize> Shard<'a, N, RF> {
     /// Creates a new shard with the given index and replica set.
-    pub fn new(idx: ShardIdx, replica_set: &'a ReplicaSet<NodeId, RF>) -> Self {
+    pub fn new(idx: ShardIdx, replica_set: &'a ReplicaSet<N, RF>) -> Self {
         Self { idx, replica_set }
     }
 
     /// Returns the replica set of the shard.
-    pub fn replica_set(&self) -> &ReplicaSet<NodeId, RF> {
+    pub fn replica_set(&self) -> &ReplicaSet<N, RF> {
         self.replica_set
     }
 
@@ -68,13 +68,18 @@ impl<'a, const RF: usize> Shard<'a, RF> {
 ///
 /// Each shard is a replica set of nodes that are responsible for the data in
 /// that keyspace portion.
-#[derive(Clone)]
-pub(crate) struct Shards<const RF: usize>(Vec<ReplicaSet<NodeId, RF>>);
+pub(crate) struct Shards<N: Node, const RF: usize>(Vec<ReplicaSet<N, RF>>);
 
-impl<const RF: usize> Shards<RF> {
+impl<N: Node, const RF: usize> Clone for Shards<N, RF> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<N: Node, const RF: usize> Shards<N, RF> {
     /// Creates a new keyspace with each shard controlled by a replica set of
     /// nodes.
-    pub fn new<N, R>(nodes: &Nodes<N>, replication_strategy: R) -> KeyspaceResult<Self>
+    pub fn new<R>(nodes: &Nodes<N>, replication_strategy: R) -> KeyspaceResult<Self>
     where
         N: Node,
         R: ReplicationStrategy,
@@ -84,20 +89,18 @@ impl<const RF: usize> Shards<RF> {
         }
 
         // Highest random weight (HRW) algorithm is used to select the nodes.
-        let hrw = HrwNodes::new(nodes.keys());
+        let hrw = HrwNodes::new(nodes.values());
 
         let mut shards = Vec::with_capacity(ShardIdx::MAX.0 as usize + 1);
         for idx in 0..=ShardIdx::MAX.0 {
             // Each replica set gets a fresh copy of the replication strategy.
             let mut replication_strategy = replication_strategy.clone();
-            let selected_replicas = hrw.sorted(&idx).filter_map(|node_idx| {
-                nodes.get(*node_idx).and_then(|node| {
-                    if replication_strategy.is_eligible_replica(node) {
-                        Some(*node_idx)
-                    } else {
-                        None
-                    }
-                })
+            let selected_replicas = hrw.sorted(&idx).filter_map(|node| {
+                if replication_strategy.is_eligible_replica(&node) {
+                    Some(node.clone())
+                } else {
+                    None
+                }
             });
 
             shards.push(ReplicaSet::try_from_iter(selected_replicas)?);
@@ -107,7 +110,7 @@ impl<const RF: usize> Shards<RF> {
     }
 
     /// Iterator over the shards in the keyspace.
-    pub fn iter(&self) -> impl Iterator<Item = Shard<RF>> {
+    pub fn iter(&self) -> impl Iterator<Item = Shard<N, RF>> {
         self.0
             .iter()
             .enumerate()
@@ -120,7 +123,7 @@ impl<const RF: usize> Shards<RF> {
     }
 
     /// Returns replica set for the shard at the given index.
-    pub fn replica_set(&self, idx: ShardIdx) -> &ReplicaSet<NodeId, RF> {
+    pub fn replica_set(&self, idx: ShardIdx) -> &ReplicaSet<N, RF> {
         &self.0[idx.0 as usize]
     }
 }

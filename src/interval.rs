@@ -1,4 +1,4 @@
-use super::KeyPosition;
+use super::{KeyPosition, Node, NodeRef};
 
 /// A range of keys in the keyspace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,15 +32,25 @@ impl KeyRange {
 ///
 /// Range bounded inclusively below and exclusively above i.e.
 /// `[start..end)`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Interval<NODES> {
+#[derive(Debug, PartialEq, Eq)]
+pub struct Interval<N: Node> {
     key_range: KeyRange,
-    nodes: NODES,
+    nodes: Vec<NodeRef<N>>,
 }
 
-impl<NODES> Interval<NODES> {
+impl<N: Node> Clone for Interval<N> {
+    fn clone(&self) -> Self {
+        Self {
+            key_range: self.key_range,
+            nodes: self.nodes.clone(),
+        }
+    }
+}
+
+impl<N: Node> Interval<N> {
     /// Creates a new interval with the given key range and nodes.
-    pub(crate) fn new(key_range: KeyRange, nodes: NODES) -> Self {
+    pub(crate) fn new<I: IntoIterator<Item = NodeRef<N>>>(key_range: KeyRange, nodes: I) -> Self {
+        let nodes = nodes.into_iter().collect::<Vec<_>>();
         Self { key_range, nodes }
     }
 
@@ -50,17 +60,7 @@ impl<NODES> Interval<NODES> {
     }
 
     /// Returns the nodes responsible for the interval.
-    pub fn nodes(&self) -> &NODES {
+    pub fn nodes(&self) -> &Vec<NodeRef<N>> {
         &self.nodes
-    }
-}
-
-impl<T> Interval<Vec<&T>> {
-    pub fn copied(&self) -> Interval<Vec<T>>
-    where
-        T: Clone,
-    {
-        let nodes = self.nodes.clone().into_iter().cloned().collect::<Vec<_>>();
-        Interval::new(self.key_range, nodes)
     }
 }

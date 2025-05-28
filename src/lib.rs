@@ -51,7 +51,7 @@ where
     H: BuildHasher,
 {
     nodes: Arc<Nodes<N>>,
-    shards: Shards<RF>,
+    shards: Shards<N, RF>,
     replication_strategy: R,
     build_hasher: H,
     version: u64,
@@ -73,7 +73,6 @@ where
         replication_strategy: R,
     ) -> KeyspaceResult<Self> {
         let nodes = Nodes::from_iter(init_nodes);
-
         let shards = Shards::new(&nodes, replication_strategy.clone())?;
         Ok(Self {
             nodes: Arc::new(nodes),
@@ -93,19 +92,21 @@ where
     }
 
     /// Remove a node from the keyspace.
-    pub fn remove_node(&mut self, node: &N) -> KeyspaceResult<MigrationPlan<N>> {
+    pub fn remove_node(&mut self, node: &N::Id) -> KeyspaceResult<MigrationPlan<N>> {
         self.nodes.remove(node);
         self.migration_plan()
     }
 
     /// Replace all nodes in the keyspace with a new batch of nodes.
-    pub fn set_nodes<I: IntoIterator<Item = N>>(
+    pub fn update_nodes<'a, I: IntoIterator<Item = N>, IR: IntoIterator<Item = &'a N::Id>>(
         &mut self,
-        nodes: I,
-    ) -> KeyspaceResult<MigrationPlan<N>> {
-        for node in nodes {
-            self.nodes.insert(node);
-        }
+        new_nodes: I,
+        removed_nodes: IR,
+    ) -> KeyspaceResult<MigrationPlan<N>>
+    where
+        N: 'a,
+    {
+        self.nodes.batch_update(new_nodes, removed_nodes);
         self.migration_plan()
     }
 
@@ -118,9 +119,7 @@ where
         let key_position = self.build_hasher.hash_one(key);
         let shard_idx = ShardIdx::from_position(key_position);
         let replica_set = self.shards.replica_set(shard_idx);
-        replica_set
-            .iter()
-            .filter_map(|node_idx| self.nodes.get(*node_idx))
+        replica_set.iter().map(Clone::clone)
     }
 
     /// Keyspace version.
@@ -142,12 +141,10 @@ where
                 shard
                     .replica_set()
                     .iter()
-                    .map(|idx| (*idx, key_range))
+                    .map(|idx| (idx.clone(), key_range))
                     .collect::<Vec<_>>()
             })
-            .filter_map(|(idx, key_range)| {
-                self.nodes.get(idx).and_then(|node| Some((node, key_range)))
-            })
+            .map(|(idx, key_range)| (idx.clone(), key_range))
     }
 
     /// Keyspace intervals controlled by the given node.
@@ -167,11 +164,9 @@ where
         self.shards = Shards::new(&self.nodes, self.replication_strategy.clone())?;
 
         // Calculate migration plan from updated shards.
-        MigrationPlan::new(self.version, self.nodes.clone(), &old_shards, &self.shards).and_then(
-            |plan| {
-                self.version += 1;
-                Ok(plan)
-            },
-        )
+        MigrationPlan::new(self.version, &old_shards, &self.shards).and_then(|plan| {
+            self.version += 1;
+            Ok(plan)
+        })
     }
 }
