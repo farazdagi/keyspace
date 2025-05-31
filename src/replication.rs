@@ -1,6 +1,6 @@
 use {
     super::{KeyspaceError, KeyspaceResult, Node, NodeRef},
-    std::{ ops::Deref},
+    std::ops::Deref,
 };
 
 /// Replication strategy determines how to choose the nodes for redundancy.

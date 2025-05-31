@@ -65,8 +65,9 @@ where
 {
     /// Create new keyspace.
     ///
-    /// Make sure that at least `RF` nodes are added to the
-    /// keyspace, otherwise the keyspace will not be able to function properly.
+    /// Make sure that at least replication factor (`RF`) number of nodes are
+    /// added to the keyspace, otherwise it will not be able to function
+    /// properly.
     fn with_build_hasher<I: IntoIterator<Item = N>>(
         build_hasher: H,
         init_nodes: I,
@@ -92,27 +93,13 @@ where
     }
 
     /// Remove a node from the keyspace.
-    pub fn remove_node(&mut self, node: &N::Id) -> KeyspaceResult<MigrationPlan<N>> {
-        self.nodes.remove(node);
-        self.migration_plan()
-    }
-
-    /// Replace all nodes in the keyspace with a new batch of nodes.
-    pub fn update_nodes<'a, I: IntoIterator<Item = N>, IR: IntoIterator<Item = &'a N::Id>>(
-        &mut self,
-        new_nodes: I,
-        removed_nodes: IR,
-    ) -> KeyspaceResult<MigrationPlan<N>>
-    where
-        N: 'a,
-    {
-        self.nodes.batch_update(new_nodes, removed_nodes);
+    pub fn remove_node(&mut self, node_id: &N::Id) -> KeyspaceResult<MigrationPlan<N>> {
+        self.nodes.remove(node_id);
         self.migration_plan()
     }
 
     /// Returns replication factor (`RF`) number of nodes responsible for the
-    /// given key position. Key is, normally, hashed to determine the position
-    /// in the keyspace.
+    /// given key position.
     ///
     /// The first node is assumed to be the primary node.
     pub fn replicas<K: Hash>(&self, key: &K) -> impl Iterator<Item = NodeRef<N>> {
@@ -133,24 +120,24 @@ where
     ///
     /// Each interval is a half-open `[start_key..end_key)` range of controlled
     /// keys, with one or more replicas assigned.
-    pub fn iter(&self) -> impl Iterator<Item = (NodeRef<N>, KeyRange)> {
-        self.shards
-            .iter()
-            .flat_map(|shard| {
-                let key_range = shard.key_range();
-                shard
-                    .replica_set()
-                    .iter()
-                    .map(|idx| (idx.clone(), key_range))
-                    .collect::<Vec<_>>()
-            })
-            .map(|(idx, key_range)| (idx.clone(), key_range))
+    ///
+    /// The intervals are returned as `(key range, node ref)` tuples, so that it
+    /// is trivial to collect them into a map (either by ranges or by nodes).
+    pub fn iter(&self) -> impl Iterator<Item = (KeyRange, NodeRef<N>)> {
+        self.shards.iter().flat_map(|shard| {
+            let key_range = shard.key_range();
+            shard
+                .replica_set()
+                .iter()
+                .map(|idx| (key_range, idx.clone()))
+                .collect::<Vec<_>>()
+        })
     }
 
     /// Keyspace intervals controlled by the given node.
-    pub fn iter_node(&self, node: &N) -> impl Iterator<Item = KeyRange> {
-        self.iter().filter_map(move |(other_node, key_range)| {
-            if other_node == node {
+    pub fn iter_node(&self, node_id: &N::Id) -> impl Iterator<Item = KeyRange> {
+        self.iter().filter_map(move |(key_range, node)| {
+            if &node.id() == node_id {
                 Some(key_range)
             } else {
                 None
@@ -164,8 +151,9 @@ where
         self.shards = Shards::new(&self.nodes, self.replication_strategy.clone())?;
 
         // Calculate migration plan from updated shards.
-        MigrationPlan::new(self.version, &old_shards, &self.shards).and_then(|plan| {
-            self.version += 1;
+        let new_version = self.version + 1;
+        MigrationPlan::new(new_version, &old_shards, &self.shards).and_then(|plan| {
+            self.version = new_version;
             Ok(plan)
         })
     }

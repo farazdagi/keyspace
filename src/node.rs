@@ -206,6 +206,7 @@ impl<N: Node> Default for Nodes<N> {
     }
 }
 
+#[allow(unused)]
 impl<N: Node> Nodes<N> {
     /// Creates a new empty nodes collection.
     pub fn new() -> Self {
@@ -235,23 +236,6 @@ impl<N: Node> Nodes<N> {
     /// Removes and returns (if existed) a node from the collection.
     pub fn remove(&self, id: &N::Id) -> Option<NodeRef<N>> {
         self.0.write().remove(id)
-    }
-
-    /// Adds or removes nodes in batch.
-    pub fn batch_update<'a, I: IntoIterator<Item = N>, IR: IntoIterator<Item = &'a N::Id>>(
-        &self,
-        new_nodes: I,
-        removed_nodes: IR,
-    ) where
-        N: 'a,
-    {
-        let mut write_lock = self.0.write();
-        for node in new_nodes {
-            write_lock.insert(node.id(), NodeRef::new(node));
-        }
-        for node_id in removed_nodes {
-            write_lock.remove(node_id);
-        }
     }
 
     /// Returns a reference to the node with given index.
