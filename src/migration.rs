@@ -1,10 +1,16 @@
 use {
-    super::{KeyspaceError, KeyspaceResult, interval::Interval, node::Node, sharding::Shards},
+    super::{
+        KeyspaceError,
+        KeyspaceResult,
+        interval::Interval,
+        node::KeyspaceNode,
+        sharding::Shards,
+    },
     std::{collections::HashMap, fmt, ops::Deref},
 };
 
 /// Data migration plan.
-pub struct MigrationPlan<N: Node> {
+pub struct MigrationPlan<N: KeyspaceNode> {
     /// Mapping of node id to the intervals that need to be migrated to it.
     intervals: HashMap<N::Id, Vec<Interval<N>>>,
 
@@ -12,7 +18,7 @@ pub struct MigrationPlan<N: Node> {
     version: u64,
 }
 
-impl<N: Node> Deref for MigrationPlan<N> {
+impl<N: KeyspaceNode> Deref for MigrationPlan<N> {
     type Target = HashMap<N::Id, Vec<Interval<N>>>;
 
     fn deref(&self) -> &Self::Target {
@@ -22,7 +28,7 @@ impl<N: Node> Deref for MigrationPlan<N> {
 
 impl<N> fmt::Debug for MigrationPlan<N>
 where
-    N: Node,
+    N: KeyspaceNode,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MigrationPlan")
@@ -31,7 +37,7 @@ where
     }
 }
 
-impl<N: Node> MigrationPlan<N> {
+impl<N: KeyspaceNode> MigrationPlan<N> {
     /// Creates a new migration plan.
     pub(crate) fn new<const RF: usize>(
         version: u64,
@@ -76,9 +82,9 @@ impl<N: Node> MigrationPlan<N> {
     }
 
     /// Intervals that need to be pulled to the given node.
-    pub fn pull_intervals(&self, node: &N) -> impl Iterator<Item = &Interval<N>> {
+    pub fn pull_intervals(&self, node_id: &N::Id) -> impl Iterator<Item = &Interval<N>> {
         self.intervals
-            .get(&node.id())
+            .get(node_id)
             .into_iter()
             .flat_map(|intervals| intervals.iter())
     }

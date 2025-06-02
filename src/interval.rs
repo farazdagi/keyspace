@@ -1,4 +1,4 @@
-use super::{KeyPosition, Node, NodeRef};
+use super::{KeyPosition, KeyspaceNode, NodeRef};
 
 /// A range of keys in the keyspace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,12 +33,12 @@ impl KeyRange {
 /// Range bounded inclusively below and exclusively above i.e.
 /// `[start..end)`.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Interval<N: Node> {
+pub struct Interval<N: KeyspaceNode> {
     key_range: KeyRange,
     nodes: Vec<NodeRef<N>>,
 }
 
-impl<N: Node> Clone for Interval<N> {
+impl<N: KeyspaceNode> Clone for Interval<N> {
     fn clone(&self) -> Self {
         Self {
             key_range: self.key_range,
@@ -47,7 +47,7 @@ impl<N: Node> Clone for Interval<N> {
     }
 }
 
-impl<N: Node> Interval<N> {
+impl<N: KeyspaceNode> Interval<N> {
     /// Creates a new interval with the given key range and nodes.
     pub(crate) fn new<I: IntoIterator<Item = NodeRef<N>>>(key_range: KeyRange, nodes: I) -> Self {
         let nodes = nodes.into_iter().collect::<Vec<_>>();

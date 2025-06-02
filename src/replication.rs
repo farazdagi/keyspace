@@ -1,5 +1,5 @@
 use {
-    super::{KeyspaceError, KeyspaceResult, Node, NodeRef},
+    super::{KeyspaceError, KeyspaceResult, KeyspaceNode, NodeRef},
     std::ops::Deref,
 };
 
@@ -9,7 +9,7 @@ use {
 /// shard of the keyspace, i.e. a single replica set of nodes.
 pub trait ReplicationStrategy {
     /// Checks if the given node is eligible for inclusion into a replica set.
-    fn is_eligible_replica<N: Node>(&mut self, node: &NodeRef<N>) -> bool;
+    fn is_eligible_replica<N: KeyspaceNode>(&mut self, node: &NodeRef<N>) -> bool;
 
     /// Builds a new instance of the replication strategy.
     fn clone(&self) -> Self;
@@ -22,7 +22,7 @@ pub trait ReplicationStrategy {
 pub struct DefaultReplicationStrategy {}
 
 impl ReplicationStrategy for DefaultReplicationStrategy {
-    fn is_eligible_replica<N: Node>(&mut self, _node: &NodeRef<N>) -> bool {
+    fn is_eligible_replica<N: KeyspaceNode>(&mut self, _node: &NodeRef<N>) -> bool {
         true
     }
 
@@ -46,15 +46,15 @@ impl DefaultReplicationStrategy {
 
 /// Set of nodes that are used to store a replica of the data.
 #[derive(Debug)]
-pub(crate) struct ReplicaSet<N: Node, const RF: usize>([NodeRef<N>; RF]);
+pub(crate) struct ReplicaSet<N: KeyspaceNode, const RF: usize>([NodeRef<N>; RF]);
 
-impl<N: Node, const RF: usize> Clone for ReplicaSet<N, RF> {
+impl<N: KeyspaceNode, const RF: usize> Clone for ReplicaSet<N, RF> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<N: Node, const RF: usize> PartialEq for ReplicaSet<N, RF> {
+impl<N: KeyspaceNode, const RF: usize> PartialEq for ReplicaSet<N, RF> {
     fn eq(&self, other: &Self) -> bool {
         if self.0.len() != other.0.len() {
             return false;
@@ -63,9 +63,9 @@ impl<N: Node, const RF: usize> PartialEq for ReplicaSet<N, RF> {
     }
 }
 
-impl<N: Node, const RF: usize> Eq for ReplicaSet<N, RF> {}
+impl<N: KeyspaceNode, const RF: usize> Eq for ReplicaSet<N, RF> {}
 
-impl<N: Node, const RF: usize> Deref for ReplicaSet<N, RF> {
+impl<N: KeyspaceNode, const RF: usize> Deref for ReplicaSet<N, RF> {
     type Target = [NodeRef<N>; RF];
 
     fn deref(&self) -> &Self::Target {
@@ -73,7 +73,7 @@ impl<N: Node, const RF: usize> Deref for ReplicaSet<N, RF> {
     }
 }
 
-impl<N: Node, const RF: usize> ReplicaSet<N, RF> {
+impl<N: KeyspaceNode, const RF: usize> ReplicaSet<N, RF> {
     pub fn try_from_iter<I: IntoIterator<Item = NodeRef<N>>>(iter: I) -> KeyspaceResult<Self> {
         use std::array::from_fn;
         let mut iter = iter.into_iter();

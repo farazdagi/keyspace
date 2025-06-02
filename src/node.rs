@@ -11,8 +11,8 @@ use {
 /// Keys which fall into such an interval are routed to the node (and its
 /// replicas).
 #[auto_impl(&)]
-pub trait Node: fmt::Debug + Hash + PartialEq + Eq {
-    type Id: fmt::Debug + Default + Hash + Clone + PartialEq + Eq;
+pub trait KeyspaceNode: fmt::Debug + Hash + PartialEq + Eq {
+    type Id: fmt::Debug + Hash + PartialEq + Eq + Clone;
 
     /// Returns the unique identifier of the node.
     fn id(&self) -> Self::Id;
@@ -33,7 +33,7 @@ pub trait Node: fmt::Debug + Hash + PartialEq + Eq {
     }
 }
 
-impl Node for String {
+impl KeyspaceNode for String {
     type Id = String;
 
     fn id(&self) -> String {
@@ -41,7 +41,7 @@ impl Node for String {
     }
 }
 
-impl Node for str {
+impl KeyspaceNode for str {
     type Id = String;
 
     fn id(&self) -> String {
@@ -53,7 +53,7 @@ impl Node for str {
 #[derive(Debug, Hash)]
 pub struct NodeRef<N>(Option<Arc<N>>);
 
-impl<N: Node> HrwNode for NodeRef<N> {
+impl<N: KeyspaceNode> HrwNode for NodeRef<N> {
     fn capacity(&self) -> usize {
         match self.0.as_ref() {
             Some(node) => node.capacity(),
@@ -68,7 +68,7 @@ impl<N> Default for NodeRef<N> {
     }
 }
 
-impl<N: Node> Clone for NodeRef<N> {
+impl<N: KeyspaceNode> Clone for NodeRef<N> {
     fn clone(&self) -> Self {
         match self.0.as_ref() {
             Some(node) => NodeRef(Some(Arc::clone(node))),
@@ -178,7 +178,7 @@ impl PartialEq<Vec<&str>> for NodeRef<Vec<String>> {
     }
 }
 
-impl<N: Node> NodeRef<N> {
+impl<N: KeyspaceNode> NodeRef<N> {
     /// Creates a new node reference.
     pub fn new(node: N) -> Self {
         Self(Some(Arc::new(node)))
@@ -198,16 +198,16 @@ impl<N: Node> NodeRef<N> {
 /// serves as a handle throughout the rest of the system. This way wherever we
 /// need to store the node, we store the index (which takes 8 bytes, `u64`).
 #[derive(Debug, Clone)]
-pub(crate) struct Nodes<N: Node>(Arc<RwLock<HashMap<N::Id, NodeRef<N>>>>);
+pub(crate) struct Nodes<N: KeyspaceNode>(Arc<RwLock<HashMap<N::Id, NodeRef<N>>>>);
 
-impl<N: Node> Default for Nodes<N> {
+impl<N: KeyspaceNode> Default for Nodes<N> {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[allow(unused)]
-impl<N: Node> Nodes<N> {
+impl<N: KeyspaceNode> Nodes<N> {
     /// Creates a new empty nodes collection.
     pub fn new() -> Self {
         Self(Arc::new(RwLock::new(HashMap::new())))
@@ -267,7 +267,7 @@ impl<N: Node> Nodes<N> {
 #[cfg(test)]
 mod tests {
     use {
-        super::{Node as KeyspaceNode, *},
+        super::*,
         std::{
             net::{IpAddr, SocketAddr},
             str::FromStr,

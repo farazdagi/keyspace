@@ -1,3 +1,6 @@
+#![doc = include_str!("../README.md")]
+#![forbid(unsafe_code)]
+
 mod builder;
 pub mod error;
 mod interval;
@@ -11,7 +14,7 @@ pub use {
     error::*,
     interval::{Interval, KeyRange},
     migration::MigrationPlan,
-    node::{Node, NodeRef},
+    node::{KeyspaceNode, NodeRef},
     replication::{DefaultReplicationStrategy, ReplicationStrategy},
 };
 use {
@@ -46,7 +49,7 @@ pub type KeyPosition = u64;
 /// redundantly on multiple of nodes, for fault tolerance.
 pub struct Keyspace<N, R = DefaultReplicationStrategy, const RF: usize = 3, H = RapidBuildHasher>
 where
-    N: Node,
+    N: KeyspaceNode,
     R: ReplicationStrategy,
     H: BuildHasher,
 {
@@ -59,7 +62,7 @@ where
 
 impl<N, R, const RF: usize, H> Keyspace<N, R, RF, H>
 where
-    N: Node,
+    N: KeyspaceNode,
     R: ReplicationStrategy,
     H: BuildHasher,
 {

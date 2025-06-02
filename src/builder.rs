@@ -1,20 +1,20 @@
 use {
-    super::{DefaultReplicationStrategy, Keyspace, KeyspaceResult, Node, ReplicationStrategy},
+    super::{DefaultReplicationStrategy, Keyspace, KeyspaceResult, KeyspaceNode, ReplicationStrategy},
     rapidhash::RapidBuildHasher,
     std::hash::BuildHasher,
 };
 
 /// Keyspace builder.
-pub struct KeyspaceBuilder<N: Node, H: BuildHasher = RapidBuildHasher>(Vec<N>, H);
+pub struct KeyspaceBuilder<N: KeyspaceNode, H: BuildHasher = RapidBuildHasher>(Vec<N>, H);
 
-impl<N: Node> KeyspaceBuilder<N> {
+impl<N: KeyspaceNode> KeyspaceBuilder<N> {
     /// Create new keyspace builder.
     pub fn new<I: IntoIterator<Item = N>>(init_nodes: I) -> Self {
         Self::with_build_hasher(init_nodes, RapidBuildHasher::default())
     }
 }
 
-impl<N: Node, H: BuildHasher> KeyspaceBuilder<N, H> {
+impl<N: KeyspaceNode, H: BuildHasher> KeyspaceBuilder<N, H> {
     /// Create new keyspace builder.
     pub fn with_build_hasher<I>(init_nodes: I, build_hasher: H) -> Self
     where
@@ -49,7 +49,7 @@ pub struct KeyspaceBuilderWithReplicationStrategy<N, R, const RF: usize, H>(Vec<
 
 impl<N, R, const RF: usize, H> KeyspaceBuilderWithReplicationStrategy<N, R, RF, H>
 where
-    N: Node,
+    N: KeyspaceNode,
     R: ReplicationStrategy,
     H: BuildHasher,
 {
@@ -72,7 +72,7 @@ pub struct KeyspaceBuilderWithReplicationFactor<N, R, const RF: usize, H>(Vec<N>
 
 impl<N, R, const RF: usize, H> KeyspaceBuilderWithReplicationFactor<N, R, RF, H>
 where
-    N: Node,
+    N: KeyspaceNode,
     H: BuildHasher,
 {
     /// Transform the builder into one with a different replication strategy.

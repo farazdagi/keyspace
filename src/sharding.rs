@@ -3,7 +3,7 @@ use {
         KeyPosition,
         KeyspaceError,
         KeyspaceResult,
-        Node,
+        KeyspaceNode,
         ReplicationStrategy,
         interval::KeyRange,
         node::Nodes,
@@ -36,12 +36,12 @@ impl ShardIdx {
 
 /// Shard is a portion of the keyspace controlled by a set of nodes.
 #[derive(Debug)]
-pub(crate) struct Shard<'a, N: Node, const RF: usize> {
+pub(crate) struct Shard<'a, N: KeyspaceNode, const RF: usize> {
     idx: ShardIdx,
     replica_set: &'a ReplicaSet<N, RF>,
 }
 
-impl<'a, N: Node, const RF: usize> Shard<'a, N, RF> {
+impl<'a, N: KeyspaceNode, const RF: usize> Shard<'a, N, RF> {
     /// Creates a new shard with the given index and replica set.
     pub fn new(idx: ShardIdx, replica_set: &'a ReplicaSet<N, RF>) -> Self {
         Self { idx, replica_set }
@@ -68,20 +68,20 @@ impl<'a, N: Node, const RF: usize> Shard<'a, N, RF> {
 ///
 /// Each shard is a replica set of nodes that are responsible for the data in
 /// that keyspace portion.
-pub(crate) struct Shards<N: Node, const RF: usize>(Vec<ReplicaSet<N, RF>>);
+pub(crate) struct Shards<N: KeyspaceNode, const RF: usize>(Vec<ReplicaSet<N, RF>>);
 
-impl<N: Node, const RF: usize> Clone for Shards<N, RF> {
+impl<N: KeyspaceNode, const RF: usize> Clone for Shards<N, RF> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<N: Node, const RF: usize> Shards<N, RF> {
+impl<N: KeyspaceNode, const RF: usize> Shards<N, RF> {
     /// Creates a new keyspace with each shard controlled by a replica set of
     /// nodes.
     pub fn new<R>(nodes: &Nodes<N>, replication_strategy: R) -> KeyspaceResult<Self>
     where
-        N: Node,
+        N: KeyspaceNode,
         R: ReplicationStrategy,
     {
         if nodes.len() < RF {
