@@ -1,5 +1,11 @@
 use {
-    super::{DefaultReplicationStrategy, Keyspace, KeyspaceResult, KeyspaceNode, ReplicationStrategy},
+    super::{
+        DefaultReplicationStrategy,
+        Keyspace,
+        KeyspaceNode,
+        KeyspaceResult,
+        ReplicationStrategy,
+    },
     rapidhash::RapidBuildHasher,
     std::hash::BuildHasher,
 };

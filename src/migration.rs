@@ -67,7 +67,7 @@ impl<N: KeyspaceNode> MigrationPlan<N> {
 
                 // Pull the data from the old replica set to the target node.
                 intervals
-                    .entry(target_node.id())
+                    .entry(target_node.id().clone())
                     .or_insert_with(Vec::new)
                     .push(Interval::new(key_range, old_replica_set.iter().cloned()));
             }

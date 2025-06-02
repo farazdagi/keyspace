@@ -140,7 +140,7 @@ where
     /// Keyspace intervals controlled by the given node.
     pub fn iter_node(&self, node_id: &N::Id) -> impl Iterator<Item = KeyRange> {
         self.iter().filter_map(move |(key_range, node)| {
-            if &node.id() == node_id {
+            if node.id() == node_id {
                 Some(key_range)
             } else {
                 None

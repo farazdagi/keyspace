@@ -15,7 +15,7 @@ pub trait KeyspaceNode: fmt::Debug + Hash + PartialEq + Eq {
     type Id: fmt::Debug + Hash + PartialEq + Eq + Clone;
 
     /// Returns the unique identifier of the node.
-    fn id(&self) -> Self::Id;
+    fn id(&self) -> &Self::Id;
 
     /// Capacity of the node.
     ///
@@ -30,22 +30,6 @@ pub trait KeyspaceNode: fmt::Debug + Hash + PartialEq + Eq {
     /// node's capacity to the total capacity of the keyspace.
     fn capacity(&self) -> usize {
         1
-    }
-}
-
-impl KeyspaceNode for String {
-    type Id = String;
-
-    fn id(&self) -> String {
-        self.clone()
-    }
-}
-
-impl KeyspaceNode for str {
-    type Id = String;
-
-    fn id(&self) -> String {
-        self.to_string()
     }
 }
 
@@ -221,7 +205,7 @@ impl<N: KeyspaceNode> Nodes<N> {
         Self(Arc::new(RwLock::new(HashMap::from_iter(
             nodes
                 .into_iter()
-                .map(|node| (node.id(), NodeRef::new(node))),
+                .map(|node| (node.id().clone(), NodeRef::new(node))),
         ))))
     }
 
@@ -230,7 +214,7 @@ impl<N: KeyspaceNode> Nodes<N> {
     /// If the node with given ID was already present, the value is updated, and
     /// the old value is returned.
     pub fn insert(&self, node: N) -> Option<NodeRef<N>> {
-        self.0.write().insert(node.id(), NodeRef::new(node))
+        self.0.write().insert(node.id().clone(), NodeRef::new(node))
     }
 
     /// Removes and returns (if existed) a node from the collection.
@@ -301,8 +285,8 @@ mod tests {
     impl KeyspaceNode for Node {
         type Id = String;
 
-        fn id(&self) -> Self::Id {
-            self.id.clone()
+        fn id(&self) -> &Self::Id {
+            &self.id
         }
 
         fn capacity(&self) -> usize {

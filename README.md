@@ -44,36 +44,30 @@ use {
 
 // Node type holds enough information about our physical node.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
-struct Node {
-    id: String,
-    addr: SocketAddr,
-}
+struct Node(String);
 
-impl Node {
-    fn new(id: &str, ip: &str, port: u16) -> Self {
-        Self {
-            id: id.to_string(),
-            addr: SocketAddr::new(IpAddr::from_str(&ip).unwrap(), port),
-        }
-    }
-}
-
-// For a node to be used in keyspace, it must implement `KeyspaceNode` trait.
+// To be used as a keyspace node, it must implement the trait.
 impl KeyspaceNode for Node {
     type Id = String;
 
-    fn id(&self) -> Self::Id {
-        self.id.clone()
+    fn id(&self) -> &Self::Id {
+        &self.0
+    }
+}
+
+impl Node {
+    /// Creates a new node from a string identifier.
+    pub fn new(id: &str) -> Self {
+        Node(id.to_string())
     }
 }
 
 // Each keyspace must start from a set of initial nodes.
-// The node count must be at least replication factor number of nodes.
-let init_nodes = vec![
-    Node::new("node0", "127.0.0.1", 2048),
-    Node::new("node1", "127.0.0.1", 2049),
-    Node::new("node2", "127.0.0.1", 2050),
-];
+// The node count must be at least equal to replication factor.
+let init_nodes = vec!["node0", "node1", "node2"]
+    .into_iter()
+    .map(Node::new)
+    .collect::<Vec<Node>>();
 
 // Create a keyspace with the (default) replication factor of 3.
 let mut ks = KeyspaceBuilder::new(init_nodes.clone())
@@ -81,37 +75,57 @@ let mut ks = KeyspaceBuilder::new(init_nodes.clone())
     .expect("Failed to create keyspace");
 
 // Check replicas for the key.
-let replicas = ks.replicas(&"key1").collect::<Vec<_>>();
-assert_eq!(replicas.len(), 3, "There should be 3 replicas for the key");
-assert!(
-    replicas
-        .iter()
-        .all(|node| init_nodes.iter().any(|n| n.id() == node.id())),
-    "All replicas should be from initial nodes",
-);
+let primary_replica = ks
+    .replicas(&"key0") // iterator over replicas
+    .next()
+    .expect("No replicas found for the key");
+assert_eq!(primary_replica.id(), "node2");
+
+let primary_replica = ks
+    .replicas(&"key1") // iterator over replicas
+    .next()
+    .expect("No replicas found for the key");
+assert_eq!(primary_replica.id(), "node1");
 
 // Add another node, see updated replica set.
-ks.add_node(Node::new("node4", "127.0.0.1", 2051))
-    .expect("Failed to add node");
+//
+// Some nodes will have the new node in their replica set, however,
+// the majority of keys will not change their primary replica.
+ks.add_node(Node::new("node4")).expect("Failed to add node");
 
-// Check replicas for the for `key1` -- replica set remained the same!
-// This is expected, the whole point of the keyspace is that it is not totally
-// rehashed on updates - only part of the keyspace is updated.
-let replicas = ks.replicas(&"key1").collect::<Vec<_>>();
-assert_eq!(replicas.len(), 3,);
-assert!(
-    replicas
-        .iter()
-        .all(|node| init_nodes.iter().any(|n| n.id() == node.id())),
-    "All replicas should be from initial nodes",
-);
+// Re-check primary replica for the key.
+// This should not change, as the keyspace is not totally rehashed.
+let primary_replica = ks
+    .replicas(&"key0") // iterator over replicas
+    .next()
+    .expect("No replicas found for the key");
+assert_eq!(primary_replica.id(), "node2");
 
-// When it comes to `key2` its replica set should include the new node.
-let replicas = ks.replicas(&"key2").collect::<Vec<_>>();
-assert!(
-    replicas.iter().any(|node| node.id() == "node4"),
-    "New node should be in the replica set"
-);
+// Some keys will have the new node in their replica set, though.
+let primary_replica = ks
+    .replicas(&"key1") // iterator over replicas
+    .next()
+    .expect("No replicas found for the key");
+assert_eq!(primary_replica.id(), "node4");
+
+// Remove a node.
+// The node will not be a primary replica any more.
+ks.remove_node(&String::from("node2"))
+    .expect("Failed to remove node");
+
+// Another primary replica should be selected for the key.
+let primary_replica = ks
+    .replicas(&"key0") // iterator over replicas
+    .next()
+    .expect("No replicas found for the key");
+assert_eq!(primary_replica.id(), "node4");
+
+// Most keys will be unaffected.
+let primary_replica = ks
+    .replicas(&"key1") // iterator over replicas
+    .next()
+    .expect("No replicas found for the key");
+assert_eq!(primary_replica.id(), "node4");
 ```
 
 This is only a minimal use case, real life scenarios would likely require:
