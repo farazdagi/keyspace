@@ -34,13 +34,7 @@ The purpose of the keyspace is to route keys to nodes. To do that, we need to de
 that implements the `KeyspaceNode` trait.
 
 ``` rust
-use {
-    keyspace::{KeyRange, KeyspaceBuilder, KeyspaceNode},
-    std::{
-        net::{IpAddr, SocketAddr},
-        str::FromStr,
-    },
-};
+use keyspace::{KeyspaceBuilder, KeyspaceNode};
 
 // Node type holds enough information about our physical node.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
