@@ -74,6 +74,7 @@ let primary_replica = ks
     .next()
     .expect("No replicas found for the key");
 assert_eq!(primary_replica.id(), "node2");
+let removed_node = primary_replica; // save the node for later
 
 let primary_replica = ks
     .replicas(&"key1") // iterator over replicas
@@ -104,7 +105,7 @@ assert_eq!(primary_replica.id(), "node4");
 
 // Remove a node.
 // The node will not be a primary replica any more.
-ks.remove_node(&String::from("node2"))
+ks.remove_node(removed_node.id())
     .expect("Failed to remove node");
 
 // Another primary replica should be selected for the key.
@@ -122,15 +123,15 @@ let primary_replica = ks
 assert_eq!(primary_replica.id(), "node4");
 ```
 
-This is only a minimal use case, real life scenarios would likely require:
+This is only a minimal use case, real-life scenarios would likely require:
 
-- Nodes holding more information than just an ID.
-- Heterogeneous cluster with nodes having different capacities.
-- Full support for migrations and re-balancing, i.e. ability to pull data from data holding nodes on
-  a node addition/removal.
-- For failure tolerance, keys may need to be replicated across multiple physical machines.
-- Moreover, such a replication should be flexible enough, with custom replication strategies, e.g.
-  strategy that ensures that replicas of a key live in different availability zones or racks.
+- Nodes holding more information than just an ID (physical address, availability zone etc).
+- Nodes having different capacities to be used in a heterogeneous cluster.
+- Full support for migrations and re-balancing, that is an ability to know which data to pull from
+  what nodes on cluster updates (node additions/removals).
+- For failure tolerance, keys may need to be replicated across multiple physical machines. Moreover,
+  such a replication should be flexible enough, with custom replication strategies, e.g. strategy
+  that ensures that replicas of a key live in different availability zones or racks.
 
-See the [documentation](https://docs.rs/keyspace/latest/keyspace/) for more details on such use
-cases.
+See the [documentation](https://docs.rs/keyspace/latest/keyspace/) for more details on how to
+implement such use cases.
