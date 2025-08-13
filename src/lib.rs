@@ -1,8 +1,8 @@
-#![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 
 mod builder;
 pub mod error;
+mod hash;
 mod interval;
 mod migration;
 mod node;
@@ -12,6 +12,7 @@ mod sharding;
 pub use {
     builder::KeyspaceBuilder,
     error::*,
+    hash::DefaultHasher,
     interval::{Interval, KeyRange},
     migration::MigrationPlan,
     node::{KeyspaceNode, NodeRef},
@@ -19,10 +20,9 @@ pub use {
 };
 use {
     node::Nodes,
-    rapidhash::RapidBuildHasher,
     sharding::{ShardIdx, Shards},
     std::{
-        hash::{BuildHasher, Hash},
+        hash::{BuildHasher, BuildHasherDefault, Hash},
         sync::Arc,
     },
 };
@@ -47,10 +47,14 @@ pub type KeyPosition = u64;
 ///
 /// Supports replication out of the box, so that each key is stored
 /// redundantly on multiple of nodes, for fault tolerance.
-pub struct Keyspace<N, R = DefaultReplicationStrategy, const RF: usize = 3, H = RapidBuildHasher>
-where
+pub struct Keyspace<
+    N,
+    R = DefaultReplicationStrategy,
+    const RF: usize = 3,
+    H = BuildHasherDefault<DefaultHasher>,
+> where
     N: KeyspaceNode,
-    R: ReplicationStrategy,
+    R: ReplicationStrategy<N>,
     H: BuildHasher,
 {
     nodes: Arc<Nodes<N>>,
@@ -63,7 +67,7 @@ where
 impl<N, R, const RF: usize, H> Keyspace<N, R, RF, H>
 where
     N: KeyspaceNode,
-    R: ReplicationStrategy,
+    R: ReplicationStrategy<N>,
     H: BuildHasher,
 {
     /// Create new keyspace.

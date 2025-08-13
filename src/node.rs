@@ -33,6 +33,26 @@ pub trait KeyspaceNode: fmt::Debug + Hash + PartialEq + Eq {
     }
 }
 
+macro_rules! impl_keyspace_node {
+    ($($t:ty),+) => {
+        $(
+            impl KeyspaceNode for $t {
+                type Id = $t;
+
+                fn id(&self) -> &Self::Id {
+                    self
+                }
+
+                fn capacity(&self) -> usize {
+                    1
+                }
+            }
+        )+
+    };
+}
+
+impl_keyspace_node!(String, &'static str, u8, u16, u32, u64, usize);
+
 /// Reference to a node.
 #[derive(Debug, Hash)]
 pub struct NodeRef<N>(Option<Arc<N>>);

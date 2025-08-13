@@ -1,5 +1,5 @@
 use {
-    super::{KeyspaceError, KeyspaceResult, KeyspaceNode, NodeRef},
+    super::{KeyspaceError, KeyspaceNode, KeyspaceResult, NodeRef},
     std::ops::Deref,
 };
 
@@ -7,33 +7,20 @@ use {
 ///
 /// Each instance of `ReplicationStrategy` is assumed to operate on a single
 /// shard of the keyspace, i.e. a single replica set of nodes.
-pub trait ReplicationStrategy {
+pub trait ReplicationStrategy<N>: Clone {
     /// Checks if the given node is eligible for inclusion into a replica set.
-    fn is_eligible_replica<N: KeyspaceNode>(&mut self, node: &NodeRef<N>) -> bool;
-
-    /// Builds a new instance of the replication strategy.
-    fn clone(&self) -> Self;
+    fn is_eligible_replica(&mut self, node: &N) -> bool;
 }
 
 /// Default replication strategy.
 ///
 /// Any node is suitable for the default replication strategy.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct DefaultReplicationStrategy {}
 
-impl ReplicationStrategy for DefaultReplicationStrategy {
-    fn is_eligible_replica<N: KeyspaceNode>(&mut self, _node: &NodeRef<N>) -> bool {
+impl<N> ReplicationStrategy<N> for DefaultReplicationStrategy {
+    fn is_eligible_replica(&mut self, _node: &N) -> bool {
         true
-    }
-
-    fn clone(&self) -> Self {
-        Self {}
-    }
-}
-
-impl Default for DefaultReplicationStrategy {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

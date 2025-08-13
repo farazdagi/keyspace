@@ -2,8 +2,8 @@ use {
     super::{
         KeyPosition,
         KeyspaceError,
-        KeyspaceResult,
         KeyspaceNode,
+        KeyspaceResult,
         ReplicationStrategy,
         interval::KeyRange,
         node::Nodes,
@@ -68,8 +68,12 @@ impl<'a, N: KeyspaceNode, const RF: usize> Shard<'a, N, RF> {
 ///
 /// Each shard is a replica set of nodes that are responsible for the data in
 /// that keyspace portion.
+#[derive(Debug)]
 pub(crate) struct Shards<N: KeyspaceNode, const RF: usize>(Vec<ReplicaSet<N, RF>>);
 
+/// `ReplicaSet<N, RF>` holds `NodeRef<N>` (which implements `Clone`).
+/// Derive macro cannot see that `NodeRef<N>` implements `Clone`, and requires
+/// `Clone` to be implemented on `N` as well.
 impl<N: KeyspaceNode, const RF: usize> Clone for Shards<N, RF> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
@@ -82,7 +86,7 @@ impl<N: KeyspaceNode, const RF: usize> Shards<N, RF> {
     pub fn new<R>(nodes: &Nodes<N>, replication_strategy: R) -> KeyspaceResult<Self>
     where
         N: KeyspaceNode,
-        R: ReplicationStrategy,
+        R: ReplicationStrategy<N>,
     {
         if nodes.len() < RF {
             return Err(KeyspaceError::NotEnoughNodes(RF));
@@ -110,7 +114,7 @@ impl<N: KeyspaceNode, const RF: usize> Shards<N, RF> {
     }
 
     /// Iterator over the shards in the keyspace.
-    pub fn iter(&self) -> impl Iterator<Item = Shard<N, RF>> {
+    pub fn iter(&self) -> impl Iterator<Item = Shard<'_, N, RF>> {
         self.0
             .iter()
             .enumerate()

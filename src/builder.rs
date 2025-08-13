@@ -1,22 +1,25 @@
 use {
     super::{
+        DefaultHasher,
         DefaultReplicationStrategy,
         Keyspace,
         KeyspaceNode,
         KeyspaceResult,
         ReplicationStrategy,
     },
-    rapidhash::RapidBuildHasher,
-    std::hash::BuildHasher,
+    std::hash::{BuildHasher, BuildHasherDefault},
 };
 
 /// Keyspace builder.
-pub struct KeyspaceBuilder<N: KeyspaceNode, H: BuildHasher = RapidBuildHasher>(Vec<N>, H);
+pub struct KeyspaceBuilder<N: KeyspaceNode, H: BuildHasher = BuildHasherDefault<DefaultHasher>>(
+    Vec<N>,
+    H,
+);
 
 impl<N: KeyspaceNode> KeyspaceBuilder<N> {
     /// Create new keyspace builder.
     pub fn new<I: IntoIterator<Item = N>>(init_nodes: I) -> Self {
-        Self::with_build_hasher(init_nodes, RapidBuildHasher::default())
+        Self::with_build_hasher(init_nodes, BuildHasherDefault::default())
     }
 }
 
@@ -37,7 +40,7 @@ impl<N: KeyspaceNode, H: BuildHasher> KeyspaceBuilder<N, H> {
     }
 
     /// Transform the builder into one with a different replication strategy.
-    pub fn with_replication_strategy<R: ReplicationStrategy>(
+    pub fn with_replication_strategy<R: ReplicationStrategy<N>>(
         self,
         replication_strategy: R,
     ) -> KeyspaceBuilderWithReplicationStrategy<N, R, 3, H> {
@@ -56,7 +59,7 @@ pub struct KeyspaceBuilderWithReplicationStrategy<N, R, const RF: usize, H>(Vec<
 impl<N, R, const RF: usize, H> KeyspaceBuilderWithReplicationStrategy<N, R, RF, H>
 where
     N: KeyspaceNode,
-    R: ReplicationStrategy,
+    R: ReplicationStrategy<N>,
     H: BuildHasher,
 {
     /// Transform the builder into one with a different replication factor.
@@ -82,7 +85,7 @@ where
     H: BuildHasher,
 {
     /// Transform the builder into one with a different replication strategy.
-    pub fn with_replication_strategy<CustomR: ReplicationStrategy>(
+    pub fn with_replication_strategy<CustomR: ReplicationStrategy<N>>(
         self,
         replication_strategy: CustomR,
     ) -> KeyspaceBuilderWithReplicationStrategy<N, CustomR, RF, H> {
