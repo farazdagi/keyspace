@@ -391,11 +391,12 @@ assert!(
 ```
 
 When it comes to node removal, the keyspace will also provide a migration plan, and again using it
-you will be able to obtain intervals (with source nodes) that need to be pulled to a given node. Then,
-it is the matter of traversal of all nodes, where for each node you request `pull_intervals()`, check
-if those are not empty, move data from source nodes to the target node, and finally consider removed
-node as detached. 
+you will be able to obtain intervals (with source nodes) that need to be pulled to a given node.
+Then, it is the matter of traversal of all nodes, where for each node you request
+`pull_intervals()`, check if those are not empty, move data from source nodes to the target node,
+and finally consider removed node as detached.
 
-Please note, that migrations obtained from `Keyspace::remove_node()`, will still contain
-removed nodes in source nodes, as before a node can be considered removed, it should help moving data around.
-However, if you detach node immediately, given that data is replicated -- data can be moved around by using other replicas in the replica sets that contained the removed node.
+Please note, that migrations obtained from `Keyspace::remove_node()`, will still contain removed
+nodes in source nodes, as before a node can be considered removed, it should help moving data
+around. However, if you detach node immediately, given that data is replicated -- data can be moved
+around by using other replicas in the replica sets that contained the removed node.
